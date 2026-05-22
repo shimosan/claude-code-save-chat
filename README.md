@@ -67,3 +67,7 @@ Claude Code は vault 内のフォルダを 3 系統に分類して扱う:
 
 - 本 library に**個人 secrets を置かない** (`.env`, API キー等は別の場所へ)
 - `CLAUDE.local.md` は端末ローカル管理 — クラウド共有しない
+
+## License
+
+MIT — see [LICENSE](LICENSE).
