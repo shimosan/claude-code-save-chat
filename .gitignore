@@ -1,0 +1,5 @@
+# macOS
+.DS_Store
+
+# Local scratch (pre-public versions, personal backups)
+scratch/
