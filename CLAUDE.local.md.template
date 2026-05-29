@@ -19,17 +19,7 @@
 ## 端末情報
 
 - ホスト名: <hostname>
-- 機種: <machine_model>
-- 用途: <usage>
-- OS: <os>
 
-## マシン台帳
-
-現在の運用端末:
-
-- `<hostname>` (<machine_model>、<usage>)
-
-他の端末があれば追記。
 
 ## ━━━━━━ FREEZONE BOUNDARY ━━━━━━
 

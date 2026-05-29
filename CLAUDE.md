@@ -21,12 +21,13 @@
 - `CLAUDE.local.md.template`: 新端末セットアップ時にのみ Claude が参照 (詳細は下記「セットアップ」)
 - `README.md`, `.gitignore`: 公開リポジトリ用ファイル (load/save しない)
 - `scratch/`: ローカル退避用 (`.gitignore` 対象)
-
-`CLAUDE.local.md.template` 以外は、通常運用で Claude が読まない・触らない。
+- `local/`, `notes/`: 利用者ローカル領域 (`.gitignore` 対象、git 管理外＝ライブラリ更新で上書きされない)。詳細は README。
+- `local/machines.md`: 全端末の端末名やスペックが記載されたマシン台帳。
 
 ### 端末名
 
-端末名の一覧は `CLAUDE.local.md` で定義する。
+現在の端末名は `CLAUDE.local.md`で定義する。
+端末名の一覧は `<library_path>/local/machines.md` で定義する。
 
 ### 同期 (load / save)
 

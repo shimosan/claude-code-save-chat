@@ -3,3 +3,9 @@
 
 # Local scratch (pre-public versions, personal backups)
 scratch/
+
+# Dropbox-synced, NOT published to GitHub (cross-machine private)
+# Long-term dev records, insights
+notes/
+# Cross-machine shared private config (machine ledger etc.)
+local/
