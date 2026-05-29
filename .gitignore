@@ -4,6 +4,9 @@
 # Local scratch (pre-public versions, personal backups)
 scratch/
 
+# Claude Code local settings (per-machine: permission allowlist, paths/usernames)
+.claude/
+
 # Dropbox-synced, NOT published to GitHub (cross-machine private)
 # Long-term dev records, insights
 notes/
