@@ -23,6 +23,8 @@
 - `scratch/`: ローカル退避用 (`.gitignore` 対象)
 - `local/`, `notes/`: 利用者ローカル領域 (`.gitignore` 対象、git 管理外＝ライブラリ更新で上書きされない)。詳細は README。
 - `local/machines.md`: 全端末の端末名やスペックが記載されたマシン台帳。
+- `codex/skills/*/SKILL.md`: Codex 版 skill の配布用原本 (load/save 対象外。配布は README を参照)。
+- `copilot/prompts/*.prompt.md`: Copilot 版 prompt の配布用原本 (load/save 対象外。配布は README を参照)。
 
 ### 端末名
 
