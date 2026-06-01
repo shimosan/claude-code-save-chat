@@ -5,7 +5,9 @@
 scratch/
 
 # Claude Code local settings (per-machine: permission allowlist, paths/usernames)
-.claude/
+# Ignore .claude/ contents but keep the tracked library-maintenance CLAUDE.md
+.claude/*
+!.claude/CLAUDE.md
 
 # Dropbox-synced, NOT published to GitHub (cross-machine private)
 # Long-term dev records, insights

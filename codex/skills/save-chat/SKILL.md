@@ -15,7 +15,7 @@ Before saving, read these files in order:
 2. `~/.claude/CLAUDE.local.md` - machine-local `vault_path`, `library_path`, `ai_note_folder`, `public_note_folders`, `private_note_folders`, and host naming.
 3. `~/.claude/CLAUDE.md` - vault access, wikilink, and privacy rules when needed.
 
-If `~/.claude/commands/save-chat.md` is missing, try `<library_path>/commands/save-chat.md` after resolving `library_path`. Do not invent vault paths, folder names, or privacy scopes.
+Any `<library_path>/...` fallback below needs `library_path`, which is only defined in `~/.claude/CLAUDE.local.md` — read that first to resolve it. If `~/.claude/commands/save-chat.md` is missing, try `<library_path>/commands/save-chat.md`; likewise `~/.claude/CLAUDE.md` falls back to `<library_path>/dotclaude/CLAUDE.md`. `~/.claude/CLAUDE.local.md` itself is machine-local and has no library fallback — if it is missing, ask the user. Do not invent vault paths, folder names, or privacy scopes.
 
 ## Invocation
 

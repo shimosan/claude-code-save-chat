@@ -16,8 +16,10 @@
 ```
 <library_path>/
 ├── README.md                    ← このファイル
-├── CLAUDE.md                    ← クラウド共有のルール集
-├── CLAUDE.local.md.template     ← 端末固有設定のひな型
+├── .claude/CLAUDE.md            ← library repo の保守ルール (この repo 編集用、配布しない)
+├── dotclaude/                   ← 各端末の ~/.claude/ へ deploy する同期マスター
+│   ├── CLAUDE.md                ← クラウド共有のルール集
+│   └── CLAUDE.local.md          ← 端末固有設定のひな型
 ├── .gitignore                   ← git 除外パターン
 ├── commands/                    ← slash commands
 │   └── save-chat.md             ← 会話を Obsidian vault に保存
@@ -34,9 +36,9 @@
 
 Claude Code に依頼する:
 
-> 「`<library_path>/CLAUDE.md` を読んでセットアップして」
+> 「`<library_path>/dotclaude/CLAUDE.md` を読んでセットアップして」
 
-CLAUDE.md 内のセットアップ手順に沿って Claude が `~/.claude/` 配下を整える。
+`dotclaude/CLAUDE.md` 内のセットアップ手順に沿って Claude が `~/.claude/` 配下を整える。
 
 > **既存端末の更新時**: `CLAUDE.local.md` は自由領域 (端末ローカル管理)。template の構造が変わっても、新 template に合わせる (例: 端末情報をホスト名のみにする) か、旧記述をそのまま引き継ぐかは **ユーザーが決める**。Claude は自動で上書きせず、どちらにするか確認する。
 
@@ -60,7 +62,7 @@ CLAUDE.md 内のセットアップ手順に沿って Claude が `~/.claude/` 配
 
 Codex でも save-chat を使える。Codex 版は**参照型** — 実行時に Claude Code 版の原典 (`~/.claude/commands/save-chat.md`) を仕様として読むので、原典の更新に自動追従する (フォークではない)。
 
-> **前提: `~/.claude/CLAUDE.local.md` が必須。** spec (`commands/save-chat.md`) と `CLAUDE.md` は `~/.claude/` に無ければ `<library_path>` へフォールバックする。ただし `CLAUDE.local.md` は端末ローカル専用で library に複製が無く (`vault_path` と `library_path` を保持)、これが無いと保存先も library の位置も解決できない。
+> **前提: `~/.claude/CLAUDE.local.md` が必須。** spec (`commands/save-chat.md`) と `CLAUDE.md` は `~/.claude/` に無ければ library 側 (それぞれ `<library_path>/commands/`、`<library_path>/dotclaude/`) へフォールバックする。ただし `CLAUDE.local.md` は端末ローカル専用で library に複製が無く (`vault_path` と `library_path` を保持)、これが無いと保存先も library の位置も解決できない。
 
 - **呼び出し**: slash command ではなく skill の自然文トリガー。例: `save-chatしてください` / `/save-chat` / `save-chat <slug>`
 - **frontmatter**: `source: codex` (`model` / `session_id` は安定取得できる場合のみ記録)
@@ -86,7 +88,7 @@ cp -v <library_path>/codex/skills/save-chat/SKILL.md ~/.codex/skills/save-chat/S
 
 VS Code + GitHub Copilot でも save-chat を使える。Copilot 版は**参照型** — 実行時に Claude Code 版の原典 (`~/.claude/commands/save-chat.md`) を仕様として読む (フォークではない)。
 
-> **前提: `~/.claude/CLAUDE.local.md` が必須。** spec (`commands/save-chat.md`) と `CLAUDE.md` は `~/.claude/` に無ければ `<library_path>` へフォールバックする (Codex 版と同等)。ただし `CLAUDE.local.md` は端末ローカル専用で library に複製が無く (`vault_path` と `library_path` を保持)、これが無いと保存先も library の位置も解決できない。
+> **前提: `~/.claude/CLAUDE.local.md` が必須。** spec (`commands/save-chat.md`) と `CLAUDE.md` は `~/.claude/` に無ければ library 側 (それぞれ `<library_path>/commands/`、`<library_path>/dotclaude/`) へフォールバックする (Codex 版と同等)。ただし `CLAUDE.local.md` は端末ローカル専用で library に複製が無く (`vault_path` と `library_path` を保持)、これが無いと保存先も library の位置も解決できない。
 
 - **呼び出し**: Copilot Chat の `/save-chat` (`/save-chat <slug>` で slug 指定)
 - **frontmatter**: `source: github-copilot`
@@ -120,12 +122,12 @@ Claude Code は vault 内のフォルダを 3 系統に分類して扱う:
 - **閲覧可能ノートフォルダ** — 過去アーカイブやユーザーが開放したノート、Read 自由・書き込み不可
 - **閲覧禁止ノートフォルダ** — 個人ノート、ファイル名のみ閲覧可、本文は条件付きアクセス
 
-各端末の vault パスとフォルダ命名は `CLAUDE.local.md` で定義。アクセスルールは [`CLAUDE.md`](CLAUDE.md) を参照。
+各端末の vault パスとフォルダ命名は `CLAUDE.local.md` で定義。アクセスルールは [`dotclaude/CLAUDE.md`](dotclaude/CLAUDE.md) を参照。
 
 ## 運用
 
 ローカル (`~/.claude/`) と本 library の間で `load` / `save` で同期する。
-詳細は [`CLAUDE.md`](CLAUDE.md) を参照。
+詳細は [`dotclaude/CLAUDE.md`](dotclaude/CLAUDE.md) を参照。
 
 ## ローカル領域 — `local/` · `notes/`
 

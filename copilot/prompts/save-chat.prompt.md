@@ -7,7 +7,7 @@ Save the current conversation as a markdown note by following the existing Claud
 Runtime requirements:
 - Treat ~/.claude/commands/save-chat.md as the source specification. If it is missing, resolve library_path from ~/.claude/CLAUDE.local.md and read <library_path>/commands/save-chat.md instead.
 - Read ~/.claude/CLAUDE.local.md to resolve vault_path, library_path, and machine-local vault settings. This file is required and has no library fallback (it is machine-local and defines both vault_path and library_path); if it is missing, ask the user instead of guessing.
-- Read ~/.claude/CLAUDE.md if needed for vault scope, wikilink, and privacy rules. If it is missing, fall back to <library_path>/CLAUDE.md.
+- Read ~/.claude/CLAUDE.md if needed for vault scope, wikilink, and privacy rules. If it is missing, fall back to <library_path>/dotclaude/CLAUDE.md.
 - Use the current year to target <vault_path>/claudeYYYY/.
 - Accept an optional slug argument. If no slug is provided, derive a 3-6 word lowercase kebab-case slug from the conversation topic.
 

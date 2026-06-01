@@ -18,7 +18,8 @@
 
 **load/save 対象は `CLAUDE.md` と `commands/*.md` のみ**。library 内のその他のファイル・フォルダはすべて load/save の往復対象外:
 
-- `CLAUDE.local.md.template`: 新端末セットアップ時にのみ Claude が参照 (詳細は下記「セットアップ」)
+- `dotclaude/CLAUDE.local.md`: 新端末セットアップ時にのみ Claude が参照するひな型 (詳細は下記「セットアップ」)
+- `.claude/CLAUDE.md`: library repo の保守ルール (この repo を編集する時の project memory。各端末へは配らない)
 - `README.md`, `.gitignore`: 公開リポジトリ用ファイル (load/save しない)
 - `scratch/`: ローカル退避用 (`.gitignore` 対象)
 - `local/`, `notes/`: 利用者ローカル領域 (`.gitignore` 対象、git 管理外＝ライブラリ更新で上書きされない)。詳細は README。
@@ -33,28 +34,36 @@
 
 ### 同期 (load / save)
 
-ローカル (`~/.claude/`) と共有フォルダ (`library_path`) の間で同期する。
-どちらが「正」かは状況による。Claude は実行前に必ず diff を提示する。判断と実行指示はユーザーが行う。
+ローカル (`~/.claude/`) と library (`<library_path>/dotclaude/`, `<library_path>/commands/`)
+の間で同期する。**load = library → ローカル、save = ローカル → library。**
+対象は `CLAUDE.md` と `commands/*.md` のみ。
 
-**load** (クラウド → ローカル):
-```bash
-cp -v <library_path>/CLAUDE.md ~/.claude/CLAUDE.md
-cp -v <library_path>/commands/*.md ~/.claude/commands/
-```
+**cp による一括上書きはしない。** どちらが「正」かは状況によるため、load/save いずれも:
 
-**save** (ローカル → クラウド):
-```bash
-cp -v ~/.claude/CLAUDE.md <library_path>/CLAUDE.md
-cp -v ~/.claude/commands/<ファイル名> <library_path>/commands/
-```
+1. **diff**: 対応ファイルを `diff` して差分を提示する。
+   ```bash
+   diff <library_path>/dotclaude/CLAUDE.md ~/.claude/CLAUDE.md
+   diff -ru <library_path>/commands ~/.claude/commands
+   ```
+2. **状況判断**: 差分の素性を見極める (FREEZONE への端末別追記か / 構造化セクションの
+   更新か / 一方が古いだけか)。
+3. **方式を提案**: 「全体上書き」か「merge」かを提案。merge なら *どの hunk を
+   どちらから採るか (cherry-pick 単位)* まで具体的に挙げて指示を仰ぐ。
+4. **実行**: 指示どおり反映する。判断と最終指示は必ずユーザーが行う。
 
-注意: `cp -i` は非対話シェルでは黙ってスキップする。`cp -v` を使うこと。
-**`CLAUDE.local.md` は対象外** — クラウド共有していないので load/save 不要。
+特に `CLAUDE.md` の FREEZONE は端末ごとに追記が積もる領域。上書きは他端末が
+save したメモリを消すので、原則 merge + cherry-pick で扱う。構造化セクション
+(FREEZONE より上) は人間管理なので、差分があれば内容を確認してから反映する。
+
+注意: PowerShell の `diff` は別物 (`Compare-Object`)。Windows でも Bash ツールで `diff` を使う。
+**`CLAUDE.local.md` は load/save 対象外** — 端末ローカル管理でクラウド共有しない
+(`dotclaude/CLAUDE.local.md` は新端末セットアップ用のひな型)。
 
 ### セットアップ
 
-新しい端末でセットアップする際は、まず `CLAUDE.local.md.template` を `~/.claude/CLAUDE.local.md` にコピーし、端末固有の設定 (パス・マシン情報) を記入する。
-次に上記の load 手順を実行する (既存ファイルがあれば diff 提示・上書き判断はユーザー)。
+新しい端末でセットアップする際は、まず `<library_path>/dotclaude/CLAUDE.local.md` を
+`~/.claude/CLAUDE.local.md` にコピーし、端末固有の設定 (パス・マシン情報) を記入する。
+次に上記の load 手順を実行する (既存ファイルがあれば diff 提示・判断はユーザー)。
 
 
 ## メモリ追記の運用
@@ -98,9 +107,10 @@ vault には以下 3 系統のフォルダが共存している:
 
 ### AI ノートフォルダ
 
-Claude が save-chat 等のコマンドで書き込む対象
+Claude が save-chat 等の管理コマンドで書き込む対象
 
 - Glob / Grep / Read すべて自由
+- **書き込みは save-chat 等の管理コマンド経由のみ**。素の Write / Edit でノートを直接作成・編集してはいけない (試行錯誤は vault 内 `tmp/` を使う)
 - save-chat の wikilink 自動対象もこのスコープ
 
 ### 閲覧可能ノートフォルダ
