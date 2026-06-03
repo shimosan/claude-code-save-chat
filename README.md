@@ -27,6 +27,10 @@
 │   └── skills/save-chat/SKILL.md ← Codex 版 save-chat (参照型)
 ├── copilot/                     ← Copilot 版 prompt の配布用原本 (任意・VS Code + Copilot 端末のみ)
 │   └── prompts/save-chat.prompt.md ← Copilot 版 save-chat (参照型)
+├── scripts/                     ← 補助スクリプト集 (任意。README は目次、必要に応じて個別 md)
+│   ├── README.md                ← scripts の目次
+│   ├── patch-vscode-webview-ctrlf.md ← Ctrl-F 修正 patcher の詳細
+│   └── patch-vscode-webview-ctrlf.js ← VS Code/Cursor webview 入力欄の Ctrl-F 修正 patcher
 ├── scratch/                     ← ローカル退避用 (.gitignore 対象、load/save 対象外)
 ├── local/                       ← 利用者ローカル領域 (.gitignore 対象)
 └── notes/                       ← 開発メモ (.gitignore 対象)
@@ -128,6 +132,16 @@ Claude Code は vault 内のフォルダを 3 系統に分類して扱う:
 
 ローカル (`~/.claude/`) と本 library の間で `load` / `save` で同期する。
 詳細は [`dotclaude/CLAUDE.md`](dotclaude/CLAUDE.md) を参照。
+
+## 補助スクリプト — `scripts/`
+
+`scripts/` は `/save-chat` 本体とは独立した補助ツール置き場。Claude Code / Codex / VS Code / Cursor 周辺で見つかった再利用可能な修正・診断スクリプトをここに置く。[`scripts/README.md`](scripts/README.md) は目次とし、軽いスクリプトは 1-2 行の説明だけでよい。使い方・注意点・復旧手順が必要なものは、スクリプト専用の `.md` に詳しく書く。
+
+現在の主なスクリプト:
+
+- [`patch-vscode-webview-ctrlf.js`](scripts/patch-vscode-webview-ctrlf.js): Claude Code / Codex の VS Code/Cursor webview 入力欄で macOS `Control-F` が forward-character として動かない問題を、ローカル拡張 webview への小さな patch で補正する。`--status` / `--dry-run` / `--restore` 対応。詳細は [`scripts/patch-vscode-webview-ctrlf.md`](scripts/patch-vscode-webview-ctrlf.md)。
+
+`scripts/` の内容は任意利用。新端末セットアップに必須ではなく、必要な端末で必要なものだけ実行する。
 
 ## ローカル領域 — `local/` · `notes/`
 
