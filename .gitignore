@@ -14,3 +14,5 @@ scratch/
 notes/
 # Cross-machine shared private config (machine ledger etc.)
 local/
+# Cross-machine shared private raw logs (snapshots, apply history)
+log/

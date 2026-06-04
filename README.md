@@ -26,7 +26,8 @@
 │   └── save-chat.md             ← 会話を Obsidian vault に保存
 ├── dotcodex/                    ← 各端末の ~/.codex/ へ deploy する Codex 原本
 │   ├── AGENTS.md                ← Codex global rules adapter
-│   └── skills/save-chat/SKILL.md ← Codex 版 save-chat (参照型)
+│   ├── skills/save-chat/SKILL.md ← Codex 版 save-chat (参照型)
+│   └── skills/config-manager/SKILL.md ← Codex 版 config-manager (薄い入口)
 ├── copilot/                     ← Copilot 版 prompt の配布用原本 (任意・VS Code + Copilot 端末のみ)
 │   └── prompts/save-chat.prompt.md ← Copilot 版 save-chat (参照型)
 ├── scripts/                     ← 補助スクリプト集 (任意。README は目次、必要に応じて個別 md)
@@ -82,16 +83,17 @@ Codex を使う端末でも、save-chat の原典は Claude Code 版の設定フ
 
 詳細仕様は [`commands/save-chat.md`](commands/save-chat.md) を参照。
 
-## Codex 版 global rules / save-chat (任意)
+## Codex 版 global rules / skills (任意)
 
-Codex でも Claude Code 側のルールと save-chat workflow を参照できる。Codex 版は**参照型** — 実行時に Claude Code 版の原典 (`~/.claude/CLAUDE.md`, `~/.claude/CLAUDE.local.md`, `~/.claude/commands/save-chat.md`) を仕様として読むので、原典の更新に自動追従する (フォークではない)。
+Codex でも Claude Code 側のルール、save-chat workflow、config 管理 workflow を参照できる。Codex 版 skill は原則**参照型** — 実行時に library 側または Claude Code 版の原典を仕様として読むので、原典の更新に追従しやすい (フォークではない)。
 
 > **前提: `~/.claude/CLAUDE.local.md` が必須。** spec (`commands/save-chat.md`) と `CLAUDE.md` は `~/.claude/` に無ければ library 側 (それぞれ `<library_path>/commands/`、`<library_path>/dotclaude/`) へフォールバックする。ただし `CLAUDE.local.md` は端末ローカル専用で library に複製が無く (`vault_path` と `library_path` を保持)、これが無いと保存先も library の位置も解決できない。
 
 > **Codex 単体利用時の注意:** Claude Code binary が未導入でもよいが、`~/.claude/CLAUDE.local.md` は必要。可能なら `~/.claude/CLAUDE.md` と `~/.claude/commands/save-chat.md` も通常の Claude Code セットアップと同じ形で配置する。これらが無い場合、Codex skill は `CLAUDE.local.md` の `library_path` から library 側原本へフォールバックする。
 
 - **global rules**: `dotcodex/AGENTS.md` を `~/.codex/AGENTS.md` へ展開する。既存の `~/.codex/AGENTS.md` があれば上書きせず、マーカー付き adapter block を diff/merge する。
-- **呼び出し**: save-chat は slash command ではなく skill の自然文トリガー。例: `save-chatしてください` / `/save-chat` / `save-chat <slug>`
+- **save-chat 呼び出し**: slash command ではなく skill の自然文トリガー。例: `save-chatしてください` / `/save-chat` / `save-chat <slug>`
+- **config-manager 呼び出し**: config snapshot / drift / apply review 用の薄い入口。例: `config-managerで最近の設定差分を見て` / `<machine> の設定をこの端末に取り込みたい`
 - **frontmatter**: `source: codex` (`model` / `session_id` は安定取得できる場合のみ記録)
 - **sandbox**: vault が Codex の writable root 外なら保存時に承認を求める (vault 全体を writable root にはしない。必要なら `claude{YYYY}` だけ許可する程度に留める)
 

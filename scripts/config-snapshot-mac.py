@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """config-snapshot (mac) — 端末の live 設定状態を JSON で stdout に出力する。
 
-設定取得は read-only（`--scratch` 指定時だけ snapshot JSON を書く）。
+設定取得は read-only（`--scratch` / `--log` 指定時だけ snapshot JSON を書く）。
 各 source key = { "mtime": <backing file の更新時刻 or null>, "value": <取得内容> }。
 mtime が無意味な source (コマンドで取るもの) は null（実質は top-level captured_at が時刻）。
 settings.json / argv.json は JSONC (// コメント可) を許容してパースする。
 取れるものは raw に取得し、取捨・解釈は後段に回す（捨てると回復できないため）。
-注意: 出力には git user.email や各種設定値など、個人情報を含みうる。scratch/ は gitignore 対象だが、
+注意: 出力には git user.email や各種設定値など、個人情報を含みうる。scratch/ と log/ は gitignore 対象だが、
 共有・公開前には内容を確認すること。
 
 パスは built-in DEFAULTS。`<repo>/local/snapshot-paths.json` があれば部分上書きマージ
 （gitignore 領域。無ければ DEFAULTS で動くので外部ユーザーも実行可）。`--paths FILE` でも指定可。
 
 使い方:  python3 config-snapshot-mac.py            # JSON を stdout に表示
-         python3 config-snapshot-mac.py --scratch  # <repo>/scratch/config_<machine>_YYYY-MM-DD_HH-MM-SS.json に書く
+         python3 config-snapshot-mac.py --scratch  # <repo>/scratch/config_snapshot_<machine>_YYYY-MM-DD_HH-MM-SS.json に書く
+         python3 config-snapshot-mac.py --log      # <repo>/log/config/config_snapshot_<machine>_YYYY-MM-DD_HH-MM-SS.json に書く
          python3 config-snapshot-mac.py --paths foo.json
 """
 import argparse
@@ -23,6 +24,7 @@ import os
 import re
 import socket
 import subprocess
+import sys
 
 DEFAULTS = {
     "code_user": "~/Library/Application Support/Code/User",
@@ -45,6 +47,14 @@ DEFAULTS = {
     "latexmkrc": "~/.latexmkrc",
     "claude_local_md": "~/.claude/CLAUDE.local.md",
 }
+
+
+def require_platform():
+    if sys.platform != "darwin":
+        raise SystemExit(
+            "error: config-snapshot-mac.py must be run on macOS; "
+            "use config-snapshot-win.py on Windows"
+        )
 
 
 def iso(ts):
@@ -322,23 +332,35 @@ def main(P):
     return snap
 
 
-def scratch_path(snap):
+def snapshot_filename(snap):
     timestamp = snap["captured_at"].replace("T", "_").replace(":", "-")
-    name = f"config_{snap['machine']}_{timestamp}.json"
-    return os.path.join(repo_root(), "scratch", name)
+    return f"config_snapshot_{snap['machine']}_{timestamp}.json"
+
+
+def scratch_path(snap):
+    return os.path.join(repo_root(), "scratch", snapshot_filename(snap))
+
+
+def log_path(snap):
+    return os.path.join(repo_root(), "log", "config", snapshot_filename(snap))
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="config snapshot (mac)")
-    ap.add_argument("--scratch", action="store_true",
-                    help="stdout でなく <repo>/scratch/config_<machine>_YYYY-MM-DD_HH-MM-SS.json に書く")
+    out = ap.add_mutually_exclusive_group()
+    out.add_argument("--scratch", action="store_true",
+                     help="stdout でなく <repo>/scratch/config_snapshot_<machine>_YYYY-MM-DD_HH-MM-SS.json に書く")
+    out.add_argument("--log", action="store_true",
+                     help="stdout でなく <repo>/log/config/config_snapshot_<machine>_YYYY-MM-DD_HH-MM-SS.json に書く")
     ap.add_argument("--paths", help="path 上書き JSON (既定: <repo>/local/snapshot-paths.json)")
     args = ap.parse_args()
 
+    require_platform()
+
     snap = main(resolve_paths(args.paths))
     text = json.dumps(snap, indent=2, ensure_ascii=False)
-    if args.scratch:
-        path = scratch_path(snap)
+    if args.scratch or args.log:
+        path = scratch_path(snap) if args.scratch else log_path(snap)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write(text + "\n")
