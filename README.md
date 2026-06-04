@@ -1,6 +1,6 @@
 # claude-code-save-chat
 
-複数端末で利用する Claude Code (CLI / VS Code 拡張 / Cursor 等) の chat 履歴サマリーを Obsidian vault のノートに保存するためのコマンド `/save-chat` を実装する。あわせて、Claude Code の設定ファイルをクラウドストレージ (Dropbox / iCloud Drive / Google Drive 等) 経由で複数端末間で共有する。Obsidian vault もクラウドストレージ経由で共有すると便利。
+複数端末で利用する Claude Code (CLI / VS Code 拡張 / Cursor 等) の chat 履歴サマリーを Obsidian vault のノートに保存するためのコマンド `/save-chat` を実装する。あわせて、Claude Code / Codex / Copilot 向けの agent 設定、save-chat workflow、補助スクリプトをクラウドストレージ (Dropbox / iCloud Drive / Google Drive 等) 経由で配布・共有する。Obsidian vault もクラウドストレージ経由で共有すると便利。
 
 ## 配置場所
 
@@ -17,13 +17,14 @@
 <library_path>/
 ├── README.md                    ← このファイル
 ├── .claude/CLAUDE.md            ← library repo の保守ルール (この repo 編集用、配布しない)
-├── dotclaude/                   ← 各端末の ~/.claude/ へ deploy する同期マスター
+├── dotclaude/                   ← 各端末の ~/.claude/ へ deploy する Claude Code 原本
 │   ├── CLAUDE.md                ← クラウド共有のルール集
 │   └── CLAUDE.local.md          ← 端末固有設定のひな型
 ├── .gitignore                   ← git 除外パターン
 ├── commands/                    ← slash commands
 │   └── save-chat.md             ← 会話を Obsidian vault に保存
-├── codex/                       ← Codex 版 skill の配布用原本 (任意・Codex 利用端末のみ)
+├── dotcodex/                    ← 各端末の ~/.codex/ へ deploy する Codex 原本
+│   ├── AGENTS.md                ← Codex global rules adapter
 │   └── skills/save-chat/SKILL.md ← Codex 版 save-chat (参照型)
 ├── copilot/                     ← Copilot 版 prompt の配布用原本 (任意・VS Code + Copilot 端末のみ)
 │   └── prompts/save-chat.prompt.md ← Copilot 版 save-chat (参照型)
@@ -38,13 +39,22 @@
 
 ## 新端末のセットアップ
 
-Claude Code に依頼する:
+Claude Code を使う端末では Claude Code に依頼する:
 
 > 「`<library_path>/dotclaude/CLAUDE.md` を読んでセットアップして」
 
 `dotclaude/CLAUDE.md` 内のセットアップ手順に沿って Claude が `~/.claude/` 配下を整える。
 
 > **既存端末の更新時**: `CLAUDE.local.md` は自由領域 (端末ローカル管理)。template の構造が変わっても、新 template に合わせる (例: 端末情報をホスト名のみにする) か、旧記述をそのまま引き継ぐかは **ユーザーが決める**。Claude は自動で上書きせず、どちらにするか確認する。
+
+Codex を使う端末でも、save-chat の原典は Claude Code 版の設定ファイルなので、
+最低限 `~/.claude/CLAUDE.local.md` を配置して `library_path` / `vault_path` 等を
+記入する必要がある。Claude Code 本体を使わない端末でも、この `~/.claude/`
+ファイル群は Codex / Copilot が参照する設定原典として必要。
+
+そのうえで `dotcodex/` を `~/.codex/` へ展開する。既存の
+`~/.codex/AGENTS.md` がある場合は上書きせず、`dotcodex/AGENTS.md` の
+マーカー付き adapter block を diff/merge する。
 
 ## `/save-chat` — 会話を Obsidian vault に保存
 
@@ -62,31 +72,34 @@ Claude Code に依頼する:
 
 詳細仕様は [`commands/save-chat.md`](commands/save-chat.md) を参照。
 
-## Codex 版 save-chat (任意)
+## Codex 版 global rules / save-chat (任意)
 
-Codex でも save-chat を使える。Codex 版は**参照型** — 実行時に Claude Code 版の原典 (`~/.claude/commands/save-chat.md`) を仕様として読むので、原典の更新に自動追従する (フォークではない)。
+Codex でも Claude Code 側のルールと save-chat workflow を参照できる。Codex 版は**参照型** — 実行時に Claude Code 版の原典 (`~/.claude/CLAUDE.md`, `~/.claude/CLAUDE.local.md`, `~/.claude/commands/save-chat.md`) を仕様として読むので、原典の更新に自動追従する (フォークではない)。
 
 > **前提: `~/.claude/CLAUDE.local.md` が必須。** spec (`commands/save-chat.md`) と `CLAUDE.md` は `~/.claude/` に無ければ library 側 (それぞれ `<library_path>/commands/`、`<library_path>/dotclaude/`) へフォールバックする。ただし `CLAUDE.local.md` は端末ローカル専用で library に複製が無く (`vault_path` と `library_path` を保持)、これが無いと保存先も library の位置も解決できない。
 
-- **呼び出し**: slash command ではなく skill の自然文トリガー。例: `save-chatしてください` / `/save-chat` / `save-chat <slug>`
+> **Codex 単体利用時の注意:** Claude Code binary が未導入でもよいが、`~/.claude/CLAUDE.local.md` は必要。可能なら `~/.claude/CLAUDE.md` と `~/.claude/commands/save-chat.md` も通常の Claude Code セットアップと同じ形で配置する。これらが無い場合、Codex skill は `CLAUDE.local.md` の `library_path` から library 側原本へフォールバックする。
+
+- **global rules**: `dotcodex/AGENTS.md` を `~/.codex/AGENTS.md` へ展開する。既存の `~/.codex/AGENTS.md` があれば上書きせず、マーカー付き adapter block を diff/merge する。
+- **呼び出し**: save-chat は slash command ではなく skill の自然文トリガー。例: `save-chatしてください` / `/save-chat` / `save-chat <slug>`
 - **frontmatter**: `source: codex` (`model` / `session_id` は安定取得できる場合のみ記録)
 - **sandbox**: vault が Codex の writable root 外なら保存時に承認を求める (vault 全体を writable root にはしない。必要なら `claude{YYYY}` だけ許可する程度に留める)
 
 ### 展開 (Codex)
 
-- 原本 (正): `<library_path>/codex/skills/save-chat/SKILL.md`
-- 展開先: `~/.codex/skills/save-chat/SKILL.md`
+- 原本 (正): `<library_path>/dotcodex/`
+- 展開先: `~/.codex/`
 
-```bash
-mkdir -p ~/.codex/skills/save-chat
-cp -v <library_path>/codex/skills/save-chat/SKILL.md ~/.codex/skills/save-chat/SKILL.md
-```
+展開時は既存ファイルを一括上書きしない。特に `~/.codex/AGENTS.md` は
+ユーザー固有の global rules が入っている可能性があるため、`dotcodex/AGENTS.md`
+のマーカー付き managed block を diff/merge する。`~/.codex/skills/save-chat/SKILL.md`
+も既存ファイルがあれば差分を確認してから反映する。
 
-新端末セットアップ時に Claude Code 版の load と一緒に展開してもよいし、Codex 自身にこの README を読ませて展開させてもよい。Codex を使わない端末では不要。
+新端末セットアップ時に Claude Code 版の load と一緒に展開してもよいし、Codex 自身にこの README を読ませて展開させてもよい。ただし Codex だけを使う端末でも、上記の `~/.claude/CLAUDE.local.md` は先に用意する。Codex を使わない端末では `dotcodex/` の展開は不要。
 
-- これは Claude Code 設定の load/save (双方向同期) とは**独立した一方向配布** (原本 → 端末)。
-- 編集の正は **library 側の原本**。skill を直すときは原本を編集して各端末へ再配布する (端末側を直接いじったら原本にも反映する)。
-- 同期対象は `codex/skills/*/SKILL.md` のみ。`~/.codex/` 配下のその他 (auth・sessions 等の端末ローカル状態) は同期しない。
+- 編集の正は **library 側の原本**。Codex ルールや skill を直すときは `dotcodex/` を編集して各端末へ再配布する (端末側を直接いじったら原本にも反映する)。
+- 展開対象は `dotcodex/AGENTS.md` と `dotcodex/skills/*/SKILL.md` のみ。`~/.codex/` 配下のその他 (auth・sessions 等の端末ローカル状態) は同期しない。
+- `~/.codex/AGENTS.override.md` がある場合は `AGENTS.md` より優先される可能性があるため、展開前に確認する。
 
 ## Copilot 版 save-chat (任意)
 
@@ -130,8 +143,12 @@ Claude Code は vault 内のフォルダを 3 系統に分類して扱う:
 
 ## 運用
 
-ローカル (`~/.claude/`) と本 library の間で `load` / `save` で同期する。
-詳細は [`dotclaude/CLAUDE.md`](dotclaude/CLAUDE.md) を参照。
+基本的に library 側 (`dotclaude/`, `commands/`, `dotcodex/`, `copilot/`) を編集の正とし、
+各端末の `$HOME` 配下や editor user prompts へ展開する。端末側で直接編集した場合は、
+差分を確認して library 側へ戻す。
+
+Claude Code の `~/.claude/` との `load` / `save` 手順の詳細は
+[`dotclaude/CLAUDE.md`](dotclaude/CLAUDE.md) を参照。
 
 ## 補助スクリプト — `scripts/`
 
