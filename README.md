@@ -16,7 +16,8 @@
 ```
 <library_path>/
 ├── README.md                    ← このファイル
-├── .claude/CLAUDE.md            ← library repo の保守ルール (この repo 編集用、配布しない)
+├── .claude/CLAUDE.md            ← library repo の保守ルール (Claude Code 用・この repo 編集用、配布しない)
+├── AGENTS.md                    ← library repo の保守ルール (Codex 用・.claude/CLAUDE.md を参照する adapter、配布しない)
 ├── dotclaude/                   ← 各端末の ~/.claude/ へ deploy する Claude Code 原本
 │   ├── CLAUDE.md                ← クラウド共有のルール集
 │   └── CLAUDE.local.md          ← 端末固有設定のひな型
@@ -36,6 +37,15 @@
 ├── local/                       ← 利用者ローカル領域 (.gitignore 対象)
 └── notes/                       ← 開発メモ (.gitignore 対象)
 ```
+
+各ツールの agent 設定は **2 層 (二枚看板)** に分かれる — 「この repo を保守する時に読ませるルール (配布しない)」と「各端末へ配る原本」。両者を混同しない:
+
+| | repo 保守用 (配布しない) | 配布原本 (各端末へ deploy) |
+|---|---|---|
+| **Claude Code** | `.claude/CLAUDE.md` (subfolder ゆえ自動ロードはされない) | `dotclaude/CLAUDE.md` → `~/.claude/CLAUDE.md` |
+| **Codex** | `AGENTS.md` (repo 直下ゆえ Codex が自動で読む。中身は `.claude/CLAUDE.md` を参照する adapter) | `dotcodex/AGENTS.md` → `~/.codex/AGENTS.md` |
+
+repo 保守用の 2 ファイルは「この library を編集する agent」向け、配布原本は「配られた先の端末で動く agent」向け。同名 (`AGENTS.md` / `CLAUDE.md`) が repo 直下と `dot*/` の両方に出てくるのはこのため。
 
 ## 新端末のセットアップ
 
