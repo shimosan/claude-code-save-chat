@@ -39,6 +39,7 @@ Trigger for requests such as:
 - For pure overview requests, you may directly run `scripts/config-log-helper.py timeline`, `drift`, or `nway`; if interpretation, proposal, policy updates, or apply work is needed, return to `scripts/config-update.md`.
 - Treat `local/config-policy.md` and `local/config-local-recipes.md` as private files managed by `scripts/config-update.md`. Do not edit them unless that workflow calls for it and the user explicitly approves the exact change.
 - Do not edit live VS Code, Cursor, shell, Git, extension, skill, prompt, or other configuration before explicit approval for the concrete change.
+- For apply / rollback / any live config change, follow the `apply` mode steps in `scripts/config-update.md`: show old/new values and the target, then get the user's explicit approval before applying.
 - Prefer non-login shell execution for snapshot helpers when the tool supports it.
 
 ## Reporting

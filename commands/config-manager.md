@@ -40,6 +40,7 @@ policy・private recipe・apply rule をこのコマンドに複製しない。
 - 純粋な overview 要求なら `scripts/config-log-helper.py timeline` / `drift` / `nway` を直接実行してよい。解釈・提案・policy 更新・apply が要るなら `scripts/config-update.md` に戻る。
 - `local/config-policy.md` と `local/config-local-recipes.md` は `scripts/config-update.md` が管理する private ファイルとして扱う。当該ワークフローが要求し、かつユーザーが具体的変更を明示承認した時以外は編集しない。
 - 具体的変更の明示承認前に、live な VS Code / Cursor / shell / Git / 拡張 / skill / prompt その他の設定を編集しない。
+- apply / rollback / live config 変更は `scripts/config-update.md` の `apply` mode 手順に従い、old/new 値と対象を示してからユーザーの明示承認を得る。
 - snapshot helper は、ツールが対応するなら non-login shell 実行を優先する。
 
 ## 報告
