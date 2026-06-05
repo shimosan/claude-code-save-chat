@@ -52,6 +52,20 @@ For Codex `exec_command`, prefer:
 
 If a shell-startup warning appears but the snapshot exits successfully, writes the expected file, and the JSON contains the expected sources, treat the warning as diagnostic noise unless it points to missing snapshot data.
 
+## Claude Config Layout In Snapshots
+
+This library now stores its managed host/folder information in the unified `~/.claude/CLAUDE.md` layout. It no longer uses `~/.claude/CLAUDE.local.md` for that purpose, but users may still keep or create that file for their own independent Claude Code usage.
+
+Snapshot scripts record this state as:
+
+- `claude.md`: unified `~/.claude/CLAUDE.md` presence, library-island marker presence, and parsed host-info values.
+- `claude.legacy_local`: `~/.claude/CLAUDE.local.md` presence and parsed host-info-like values, for migration diagnostics and un-migrated library setups only.
+- `claude`: Claude CLI version and installed slash command names.
+
+Use `claude.md.value.host_info.hostname` as the preferred machine label source. Fall back to `claude.legacy_local` only for machines whose library-managed host/folder information has not yet been migrated to the unified layout. A migrated library setup should normally have `claude.md.value.has_library_island = true`; `claude.legacy_local.value.present` may be true for unrelated user-managed content and is not, by itself, an error.
+
+When comparing drift, do not treat a present `claude.legacy_local` on a migrated machine as an active source of truth for this library unless the current `claude.md` host-info is missing. If it contains only unrelated user-managed content, ignore it for library drift decisions.
+
 ## Modes
 
 The agent must state the active mode before doing work.

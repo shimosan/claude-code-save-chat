@@ -45,7 +45,8 @@ DEFAULTS = {
     "copilot_prompts": "~/Library/Application Support/Code/User/prompts",
     "karabiner": "~/.config/karabiner",
     "latexmkrc": "~/.latexmkrc",
-    "claude_local_md": "~/.claude/CLAUDE.local.md",
+    "claude_md": "~/.claude/CLAUDE.md",
+    "claude_legacy_local_md": "~/.claude/CLAUDE.local.md",
 }
 
 
@@ -215,12 +216,42 @@ def resolve_paths(override):
     return p
 
 
-def machine_label(P):
-    md = read_text(P["claude_local_md"])
-    if md:
-        m = re.search(r"ホスト名[:：]\s*(\S+)", md)
+def strip_inline_code(value):
+    return (value or "").strip().replace("`", "").strip()
+
+
+def is_placeholder(value):
+    value = strip_inline_code(value)
+    return not value or (value.startswith("<") and value.endswith(">"))
+
+
+def claude_host_info(text):
+    """Unified CLAUDE.md / legacy CLAUDE.local.md から端末設定を軽く抽出する。
+
+    raw 本文は snapshot に入れず、config-manager が比較しやすい host-info だけを保持する。
+    """
+    info = {}
+    if not text:
+        return info
+    for key in ("vault_path", "library_path", "ai_note_folder", "public_note_folders", "private_note_folders"):
+        m = re.search(rf"-\s*`{re.escape(key)}`\s*:\s*(.+)", text)
         if m:
-            return m.group(1)
+            value = strip_inline_code(m.group(1).split("  ")[0].strip())
+            if not is_placeholder(value):
+                info[key] = value
+    m = re.search(r"ホスト名[:：]\s*(\S+)", text)
+    if m:
+        value = strip_inline_code(m.group(1))
+        if not is_placeholder(value):
+            info["hostname"] = value
+    return info
+
+
+def machine_label(P):
+    for key in ("claude_md", "claude_legacy_local_md"):
+        info = claude_host_info(read_text(P[key]))
+        if info.get("hostname"):
+            return info["hostname"]
     return socket.gethostname().split(".")[0]
 
 
@@ -314,10 +345,23 @@ def main(P):
 
     # --- claude / codex / copilot 配布物 ---
     cmds = listdir(P["claude_commands"], lambda p: p.endswith(".md"))
+    claude_md = read_text(P["claude_md"])
+    legacy_local = read_text(P["claude_legacy_local_md"])
     snap["claude"] = {"mtime": mtime(P["claude_commands"]),
                       "value": {"version": run(["claude", "--version"]),
                                 "commands": [os.path.basename(c)[:-3] for c in (cmds or [])]
                                 if cmds is not None else None}}
+    snap["claude.md"] = {"mtime": mtime(P["claude_md"]),
+                         "value": {"present": claude_md is not None,
+                                   "host_info": claude_host_info(claude_md),
+                                   "has_library_island": bool(
+                                       claude_md
+                                       and "claude-library:begin" in claude_md
+                                       and "claude-library:end" in claude_md
+                                   )}}
+    snap["claude.legacy_local"] = {"mtime": mtime(P["claude_legacy_local_md"]),
+                                   "value": {"present": legacy_local is not None,
+                                             "host_info": claude_host_info(legacy_local)}}
     snap["codex"] = {"mtime": mtime(P["codex_skills"]),
                      "value": {"skills": listdir(P["codex_skills"], os.path.isdir)}}
     snap["qwen"] = {"mtime": mtime(P["qwen_settings"]),
