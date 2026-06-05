@@ -19,8 +19,7 @@
 ├── .claude/CLAUDE.md            ← library repo の保守ルール (Claude Code 用・この repo 編集用、配布しない)
 ├── AGENTS.md                    ← library repo の保守ルール (Codex 用・.claude/CLAUDE.md を参照する adapter、配布しない)
 ├── dotclaude/                   ← 各端末の ~/.claude/ へ deploy する Claude Code 原本
-│   ├── CLAUDE.md                ← クラウド共有のルール集
-│   └── CLAUDE.local.md          ← 端末固有設定のひな型
+│   └── CLAUDE.md                ← 共有ルール + 端末設定 + メモリを統合した島構造 (1 ファイル)
 ├── .gitignore                   ← git 除外パターン
 ├── commands/                    ← slash commands
 │   └── save-chat.md             ← 会話を Obsidian vault に保存
@@ -34,7 +33,7 @@
 │   ├── README.md                ← scripts の目次
 │   ├── patch-vscode-webview-ctrlf.md ← Ctrl-F 修正 patcher の詳細
 │   └── patch-vscode-webview-ctrlf.js ← VS Code/Cursor webview 入力欄の Ctrl-F 修正 patcher
-├── scratch/                     ← ローカル退避用 (.gitignore 対象、load/save 対象外)
+├── scratch/                     ← ローカル退避用 (.gitignore 対象、配布対象外)
 ├── local/                       ← 利用者ローカル領域 (.gitignore 対象)
 └── notes/                       ← 開発メモ (.gitignore 対象)
 ```
@@ -56,11 +55,11 @@ Claude Code を使う端末では Claude Code に依頼する:
 
 `dotclaude/CLAUDE.md` 内のセットアップ手順に沿って Claude が `~/.claude/` 配下を整える。
 
-> **既存端末の更新時**: `CLAUDE.local.md` は自由領域 (端末ローカル管理)。template の構造が変わっても、新 template に合わせる (例: 端末情報をホスト名のみにする) か、旧記述をそのまま引き継ぐかは **ユーザーが決める**。Claude は自動で上書きせず、どちらにするか確認する。
+> **既存端末の更新時**: load はライブラリ島の共有ルール (S) だけを更新し、島内の「ホスト情報」(端末設定 L) と島の下のメモリ領域 (M) は触らない。S の構造が変わっても L/M は既存値を保持する。Claude は自動で上書きせず、merge 方針をユーザーに確認する。
 
 Codex を使う端末でも、save-chat の原典は Claude Code 版の設定ファイルなので、
-最低限 `~/.claude/CLAUDE.local.md` を配置して `library_path` / `vault_path` 等を
-記入する必要がある。Claude Code 本体を使わない端末でも、この `~/.claude/`
+最低限 `~/.claude/CLAUDE.md`(島内の「ホスト情報」に `library_path` / `vault_path` 等を
+記入)を配置する必要がある。Claude Code 本体を使わない端末でも、この `~/.claude/`
 ファイル群は Codex / Copilot が参照する設定原典として必要。
 
 そのうえで `dotcodex/` を `~/.codex/` へ展開する。既存の
@@ -87,9 +86,9 @@ Codex を使う端末でも、save-chat の原典は Claude Code 版の設定フ
 
 Codex でも Claude Code 側のルール、save-chat workflow、config 管理 workflow を参照できる。Codex 版 skill は原則**参照型** — 実行時に library 側または Claude Code 版の原典を仕様として読むので、原典の更新に追従しやすい (フォークではない)。
 
-> **前提: `~/.claude/CLAUDE.local.md` が必須。** spec (`commands/save-chat.md`) と `CLAUDE.md` は `~/.claude/` に無ければ library 側 (それぞれ `<library_path>/commands/`、`<library_path>/dotclaude/`) へフォールバックする。ただし `CLAUDE.local.md` は端末ローカル専用で library に複製が無く (`vault_path` と `library_path` を保持)、これが無いと保存先も library の位置も解決できない。
+> **前提: `~/.claude/CLAUDE.md` が必須。** spec (`commands/save-chat.md`) は `~/.claude/` に無ければ library 側 (`<library_path>/commands/`) へフォールバックする。ただし `CLAUDE.md` 島内の「ホスト情報」(`vault_path` / `library_path` 等) は端末ローカルで library に複製が無く、これが無いと保存先も library の位置も解決できない。(移行前の端末で旧 `~/.claude/CLAUDE.local.md` が残っていれば、そこからの解決もフォールバックとして可。)
 
-> **Codex 単体利用時の注意:** Claude Code binary が未導入でもよいが、`~/.claude/CLAUDE.local.md` は必要。可能なら `~/.claude/CLAUDE.md` と `~/.claude/commands/save-chat.md` も通常の Claude Code セットアップと同じ形で配置する。これらが無い場合、Codex skill は `CLAUDE.local.md` の `library_path` から library 側原本へフォールバックする。
+> **Codex 単体利用時の注意:** Claude Code binary が未導入でもよいが、`~/.claude/CLAUDE.md`(島内の「ホスト情報」記入済み)は必要。可能なら `~/.claude/commands/save-chat.md` も通常の Claude Code セットアップと同じ形で配置する。これが無い場合、Codex skill は `CLAUDE.md` の `library_path` から library 側原本へフォールバックする。
 
 - **global rules**: `dotcodex/AGENTS.md` を `~/.codex/AGENTS.md` へ展開する。既存の `~/.codex/AGENTS.md` があれば上書きせず、マーカー付き adapter block を diff/merge する。
 - **save-chat 呼び出し**: slash command ではなく skill の自然文トリガー。例: `save-chatしてください` / `/save-chat` / `save-chat <slug>`
@@ -107,7 +106,7 @@ Codex でも Claude Code 側のルール、save-chat workflow、config 管理 wo
 のマーカー付き managed block を diff/merge する。`~/.codex/skills/save-chat/SKILL.md`
 も既存ファイルがあれば差分を確認してから反映する。
 
-新端末セットアップ時に Claude Code 版の load と一緒に展開してもよいし、Codex 自身にこの README を読ませて展開させてもよい。ただし Codex だけを使う端末でも、上記の `~/.claude/CLAUDE.local.md` は先に用意する。Codex を使わない端末では `dotcodex/` の展開は不要。
+新端末セットアップ時に Claude Code 版の load と一緒に展開してもよいし、Codex 自身にこの README を読ませて展開させてもよい。ただし Codex だけを使う端末でも、上記の `~/.claude/CLAUDE.md`(島内「ホスト情報」記入済み)は先に用意する。Codex を使わない端末では `dotcodex/` の展開は不要。
 
 - 編集の正は **library 側の原本**。Codex ルールや skill を直すときは `dotcodex/` を編集して各端末へ再配布する (端末側を直接いじったら原本にも反映する)。
 - 展開対象は `dotcodex/AGENTS.md` と `dotcodex/skills/*/SKILL.md` のみ。`~/.codex/` 配下のその他 (auth・sessions 等の端末ローカル状態) は同期しない。
@@ -117,7 +116,7 @@ Codex でも Claude Code 側のルール、save-chat workflow、config 管理 wo
 
 VS Code + GitHub Copilot でも save-chat を使える。Copilot 版は**参照型** — 実行時に Claude Code 版の原典 (`~/.claude/commands/save-chat.md`) を仕様として読む (フォークではない)。
 
-> **前提: `~/.claude/CLAUDE.local.md` が必須。** spec (`commands/save-chat.md`) と `CLAUDE.md` は `~/.claude/` に無ければ library 側 (それぞれ `<library_path>/commands/`、`<library_path>/dotclaude/`) へフォールバックする (Codex 版と同等)。ただし `CLAUDE.local.md` は端末ローカル専用で library に複製が無く (`vault_path` と `library_path` を保持)、これが無いと保存先も library の位置も解決できない。
+> **前提: `~/.claude/CLAUDE.md` が必須。** spec (`commands/save-chat.md`) は `~/.claude/` に無ければ library 側 (`<library_path>/commands/`) へフォールバックする (Codex 版と同等)。ただし `CLAUDE.md` 島内の「ホスト情報」(`vault_path` / `library_path` 等) は端末ローカルで library に複製が無く、これが無いと保存先も library の位置も解決できない。(移行前の端末で旧 `~/.claude/CLAUDE.local.md` が残っていれば、そこからの解決もフォールバックとして可。)
 
 - **呼び出し**: Copilot Chat の `/save-chat` (`/save-chat <slug>` で slug 指定)
 - **frontmatter**: `source: github-copilot`
@@ -141,7 +140,7 @@ cp -v <library_path>/copilot/prompts/save-chat.prompt.md ~/"Library/Application 
 - prompts ディレクトリは VS Code が自動生成しないので、無ければ作ってからコピーする (Windows は親があっても `prompts` 自体が無いことがある)。
 - コピー後は VS Code を再読込/再起動し、Copilot Chat で `/save-chat` が見えることを確認する。
 - VS Code Insiders を使う端末は `Code - Insiders` 配下 (`~/Library/Application Support/Code - Insiders/User/prompts/` 等) に合わせる。
-- 編集の正は **library 側の原本**。load/save (双方向同期) とは独立した一方向配布 (原本 → 端末)。同期対象は `copilot/prompts/*.prompt.md` のみ。
+- 編集の正は **library 側の原本**。Claude Code の load (配布) とは独立した一方向配布 (原本 → 端末)。同期対象は `copilot/prompts/*.prompt.md` のみ。
 
 ## Obsidian vault 管理
 
@@ -151,7 +150,7 @@ Claude Code は vault 内のフォルダを 3 系統に分類して扱う:
 - **閲覧可能ノートフォルダ** — 過去アーカイブやユーザーが開放したノート、Read 自由・書き込み不可
 - **閲覧禁止ノートフォルダ** — 個人ノート、ファイル名のみ閲覧可、本文は条件付きアクセス
 
-各端末の vault パスとフォルダ命名は `CLAUDE.local.md` で定義。アクセスルールは [`dotclaude/CLAUDE.md`](dotclaude/CLAUDE.md) を参照。
+各端末の vault パスとフォルダ命名は `~/.claude/CLAUDE.md` 島内の「ホスト情報」で定義。アクセスルールは [`dotclaude/CLAUDE.md`](dotclaude/CLAUDE.md) を参照。
 
 ## 運用
 
@@ -159,8 +158,8 @@ Claude Code は vault 内のフォルダを 3 系統に分類して扱う:
 各端末の `$HOME` 配下や editor user prompts へ展開する。端末側で直接編集した場合は、
 差分を確認して library 側へ戻す。
 
-Claude Code の `~/.claude/` との `load` / `save` 手順の詳細は
-[`dotclaude/CLAUDE.md`](dotclaude/CLAUDE.md) を参照。
+Claude Code の `~/.claude/` への `load`(配布)手順の詳細は
+[`dotclaude/CLAUDE.md`](dotclaude/CLAUDE.md) を参照(`save` は廃止)。
 
 ## 補助スクリプト — `scripts/`
 
@@ -189,7 +188,7 @@ Claude Code の `~/.claude/` との `load` / `save` 手順の詳細は
 `<hostname>` (<機種>, <プロセッサ>, <コア数>, <メモリ>, <OS>)
 ```
 
-- **hostname**: ユーザーが選ぶ呼称ラベル。OS のホスト名 (`foo.local` の `.local` 等) そのままでなくてよい。`CLAUDE.local.md` のホスト名も同じ
+- **hostname**: ユーザーが選ぶ呼称ラベル。OS のホスト名 (`foo.local` の `.local` 等) そのままでなくてよい。`CLAUDE.md` 島内「ホスト情報」のホスト名も同じ
 - **プロセッサ**: Apple Silicon は CPU+GPU 一体なので 1 トークン (`M4 Max`)。ディスクリート GPU 機は `CPU / GPU` (`Ryzen 9 7950X / RTX 4090`)
 - **OS**: `mac` / `win` / `linux` (Mac/Windows/Linux の判別用、末尾固定)
 
@@ -203,19 +202,19 @@ Claude Code の `~/.claude/` との `load` / `save` 手順の詳細は
 
 ## OS 固有の注意
 
-load/save やパス操作は POSIX (macOS / Linux) 前提。Mac・Linux は基本そのまま動き、差異が出るのは主に Windows。OS 固有の対処はここに集約する。
+load (配布) やパス操作は POSIX (macOS / Linux) 前提。Mac・Linux は基本そのまま動き、差異が出るのは主に Windows。OS 固有の対処はここに集約する。
 
 ### Windows
 
-- **load/save は Bash ツールで実行**: `cp -v` / `diff` を PowerShell でなく Bash ツールで実行すれば Mac と同じコマンドが使える (PowerShell の `diff` は `Compare-Object` のエイリアスで出力が別物)。
-- **パスは POSIX 変換**: `D:\Dropbox\library\claude` → `/d/Dropbox/library/claude` に変換して Bash に渡す。`CLAUDE.local.md` のパス定義は Windows 表記 (`D:\...`) のまま書き、使用時に変換する。
-- **端末固有メモは FREEZONE へ**: POSIX パス変換・`hostname` の挙動・projects パスエンコード等の Windows 専用補足は `CLAUDE.local.md` の FREEZONE 以下に置く (構造化セクションは template 準拠のまま保つ)。
+- **load は Bash ツールで実行**: `cp -v` / `diff` を PowerShell でなく Bash ツールで実行すれば Mac と同じコマンドが使える (PowerShell の `diff` は `Compare-Object` のエイリアスで出力が別物)。
+- **パスは POSIX 変換**: `D:\Dropbox\library\claude` → `/d/Dropbox/library/claude` に変換して Bash に渡す。`CLAUDE.md` 島内「ホスト情報」のパス定義は Windows 表記 (`D:\...`) のまま書き、使用時に変換する。
+- **端末固有メモはメモリ領域へ**: POSIX パス変換・`hostname` の挙動・projects パスエンコード等の Windows 専用補足は `CLAUDE.md` 島の下のメモリ領域 (M) に置く (島内の共有ルール S は master 準拠のまま保つ)。
 - **GPU スペック取得**: `Get-WmiObject Win32_VideoController` 等で取得。machines.md の `プロセッサ` 欄にはディスクリート GPU を採用 (統合 GPU は除外)。
 
 ## 注意
 
 - 本 library に**個人 secrets を置かない** (`.env`, API キー等は別の場所へ)
-- `CLAUDE.local.md` は端末ローカル管理 — クラウド共有しない
+- `CLAUDE.md` 島内の「ホスト情報」とメモリ領域は端末ローカル — load で配布・上書きしない
 
 ## License
 

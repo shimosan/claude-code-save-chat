@@ -5,8 +5,7 @@
 
 ## 構造
 - `dotclaude/` — 各端末の `~/.claude/` へ deploy する Claude Code 原本。
-  - `dotclaude/CLAUDE.md` → `~/.claude/CLAUDE.md`(共有ルール + FREEZONE 共有メモリ)
-  - `dotclaude/CLAUDE.local.md` → `~/.claude/CLAUDE.local.md` のひな型(端末ごとに記入)
+  - `dotclaude/CLAUDE.md` → `~/.claude/CLAUDE.md`(共有ルール + 端末設定 + メモリを統合した島構造。1 ファイル。旧 `CLAUDE.local.md` は廃止し本ファイルへ統合)
 - `commands/*.md` — `~/.claude/commands/` へ deploy する slash command。
 - `dotcodex/` — 各端末の `~/.codex/` へ deploy する Codex 原本。
   - `dotcodex/AGENTS.md` → `~/.codex/AGENTS.md`(Claude Code 側ルール参照 adapter)
@@ -17,7 +16,7 @@
 ## 編集の正
 - 共有ルール・コマンド・skill の編集の正は library 側(`dotclaude/`, `commands/`, `dotcodex/`, `copilot/`)。
   端末側(`~/.claude/`, `~/.codex/`, VS Code User prompts 等)を直接いじったら library へ戻す。
-- load/save の手順と diff/merge ポリシーは `dotclaude/CLAUDE.md` の「同期 (load / save)」を参照。
+- load の手順と diff/merge ポリシーは `dotclaude/CLAUDE.md` の「配布 (load)」を参照(save は廃止 — 端末→library の書き戻しはしない)。
 - `dotclaude/CLAUDE.md` は subfolder ゆえ自動ロードされない。これは意図的 —
   編集対象(同期マスター)が自身を制御しないようにするため。
 - `dotcodex/AGENTS.md` は配布原本。`dotcodex/` 配下で作業する時に Codex が読んでも、

@@ -12,10 +12,11 @@ Save the current Codex conversation to the user's Obsidian vault by following th
 Before saving, read these files in order:
 
 1. `~/.claude/commands/save-chat.md` - canonical save-chat specification.
-2. `~/.claude/CLAUDE.local.md` - machine-local `vault_path`, `library_path`, `ai_note_folder`, `public_note_folders`, `private_note_folders`, and host naming.
-3. `~/.claude/CLAUDE.md` - vault access, wikilink, and privacy rules when needed.
+2. `~/.claude/CLAUDE.md` - machine-local `vault_path`, `library_path`, `ai_note_folder`, `public_note_folders`, `private_note_folders`, and host naming (the "ホスト情報" / host-info section), plus vault access, wikilink, and privacy rules.
 
-Any `<library_path>/...` fallback below needs `library_path`, which is only defined in `~/.claude/CLAUDE.local.md` — read that first to resolve it. If `~/.claude/commands/save-chat.md` is missing, try `<library_path>/commands/save-chat.md`; likewise `~/.claude/CLAUDE.md` falls back to `<library_path>/dotclaude/CLAUDE.md`. `~/.claude/CLAUDE.local.md` itself is machine-local and has no library fallback — if it is missing, ask the user. Do not invent vault paths, folder names, or privacy scopes.
+On machines not yet migrated to the unified layout, those machine-local settings may still live in `~/.claude/CLAUDE.local.md`; read it as a fallback when `CLAUDE.md` has no host-info section.
+
+Any `<library_path>/...` fallback below needs `library_path`, which lives in the host-info section of `~/.claude/CLAUDE.md` (or, on un-migrated machines, in `~/.claude/CLAUDE.local.md`) — read that first to resolve it. If `~/.claude/commands/save-chat.md` is missing, try `<library_path>/commands/save-chat.md`; the shared rules of `~/.claude/CLAUDE.md` fall back to `<library_path>/dotclaude/CLAUDE.md`. The host-info values themselves are machine-local and have no library fallback (the master carries only placeholders) — if they are missing (and no legacy `CLAUDE.local.md` exists), ask the user. Do not invent vault paths, folder names, or privacy scopes.
 
 ## Invocation
 

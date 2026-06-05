@@ -20,7 +20,7 @@ Do not duplicate policy, private recipes, or apply rules in this skill.
 
 Use the current workspace if it contains `scripts/config-update.md`.
 
-If not, read `~/.claude/CLAUDE.local.md` and resolve `library_path` from there. If that file is missing or does not define `library_path`, ask the user. Do not invent paths.
+If not, read `library_path` from the host-info section of `~/.claude/CLAUDE.md` (or, on machines not yet migrated to the unified layout, from `~/.claude/CLAUDE.local.md`). If neither defines `library_path`, ask the user. Do not invent paths.
 
 ## Invocation
 
