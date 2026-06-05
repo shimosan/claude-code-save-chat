@@ -116,7 +116,7 @@ vault には以下 3 系統のフォルダが共存している:
 Claude が save-chat 等の管理コマンドで書き込む対象
 
 - Glob / Grep / Read すべて自由
-- **書き込みは save-chat 等の管理コマンド経由のみ**。素の Write / Edit でノートを直接作成・編集してはいけない (試行錯誤は vault 内 `tmp/` を使う)
+- **書き込みは save-chat 等の管理コマンド経由のみ**。素の Write / Edit でノートを直接作成・編集してはいけない (試行錯誤は vault 内 `scratch/` を使う)
 - save-chat の wikilink 自動対象もこのスコープ
 
 ### 閲覧可能ノートフォルダ
@@ -138,9 +138,9 @@ Claude が save-chat 等の管理コマンドで書き込む対象
 - **wikilink**: ノートへの wikilink は明示指示時のみ
 - **書き込み**: 書き込みはしない
 
-### tmp/ — AI 自由領域
+### scratch/ — AI 自由領域
 
-vault 内 `tmp/` フォルダは試行錯誤・実験的アウトプットの置き場。
+vault 内 `scratch/` フォルダは試行錯誤・実験的アウトプットの置き場。
 
 - AI は Read / Write / Glob / Grep すべて自由 (確認不要)
 - 閲覧禁止ノートフォルダの条件付きアクセスルールの対象外
@@ -166,4 +166,5 @@ vault 内 `tmp/` フォルダは試行錯誤・実験的アウトプットの置
 ### 端末情報
 
 - ホスト名: `<hostname>`
+
 <!-- claude-library:end — 以降はメモリ領域 (端末ローカル・自由追記・load 不可侵) -->
