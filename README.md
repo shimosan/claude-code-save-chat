@@ -6,12 +6,13 @@ Claude Code / Codex / Copilot の会話保存と複数端末 config 管理を、
 
 ## 配置場所
 
-このフォルダはクラウド同期される場所であればどこに置いてもよく、フォルダ名も自由。`claude` という名前は例であり必須ではない。各端末では、このフォルダの実パスを `library_path` として `~/.claude/CLAUDE.md` の「ホスト情報」セクションに記録する。
+このフォルダはクラウド同期される場所であればどこに置いてもよく、フォルダ名も自由。`git clone` すると既定で repo 名の `claude-code-save-chat/` になるが、好きにリネームしてよい。各端末では、このフォルダの実パスを `library_path` として `~/.claude/CLAUDE.md` の「ホスト情報」セクションに記録する。
 
 例:
-- `~/Dropbox/library/claude/`
-- `~/iCloud/claude-library/`
-- `~/GoogleDrive/agent-config/`
+- `~/Dropbox/library/claude-code-save-chat/`  (clone 既定)
+- `~/iCloud/claude-code-save-chat/`
+- `~/GoogleDrive/agent-config/`  (任意にリネーム)
+- `~/Dropbox/library/claude/`  (作者の実運用例: `claude` にリネーム)
 
 ## 構成
 
