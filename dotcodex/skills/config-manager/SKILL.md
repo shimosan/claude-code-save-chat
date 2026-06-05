@@ -32,11 +32,14 @@ Trigger for requests such as:
 - `<machine> の設定をこの端末に取り込みたい`
 - `この設定を前の状態に戻して`
 - `config policy に記録して`
+- `helper の出力をそのまま見せて`
+- `生の timeline / drift / nway / list を見たい`
 
 ## Behavior
 
 - For review/apply/config-policy work, read `scripts/config-update.md` first and follow it.
 - For pure overview requests, you may directly run `scripts/config-log-helper.py timeline`, `drift`, or `nway`; if interpretation, proposal, policy updates, or apply work is needed, return to `scripts/config-update.md`.
+- If the user asks for helper output "raw", "as-is", "そのまま", "生", or a plain list, make the `scripts/config-log-helper.py` stdout the primary response. Add only brief framing before/after it; do not replace the helper output with an agent summary.
 - Treat `local/config-policy.md` and `local/config-local-recipes.md` as private files managed by `scripts/config-update.md`. Do not edit them unless that workflow calls for it and the user explicitly approves the exact change.
 - Do not edit live VS Code, Cursor, shell, Git, extension, skill, prompt, or other configuration before explicit approval for the concrete change.
 - For apply / rollback / any live config change, follow the `apply` mode steps in `scripts/config-update.md`: show old/new values and the target, then get the user's explicit approval before applying.

@@ -7,7 +7,7 @@ allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep"]
 
 ## 設定
 
-**保存先ベースディレクトリ**: `~/.claude/CLAUDE.md` 島内「ホスト情報」の `vault_path` を参照する (移行前の端末で旧 `~/.claude/CLAUDE.local.md` が残っていればそちらでも可)。
+**保存先ベースディレクトリ**: `~/.claude/CLAUDE.md` の「ホスト情報」セクションの `vault_path` を参照する (移行前の端末で旧 `~/.claude/CLAUDE.local.md` が残っていればそちらでも可)。
 
 実行時の西暦を使って `<vault_path>/claude{YYYY}/` サブフォルダに保存。例: 2026 年なら `<vault_path>/claude2026/`。フォルダが存在しなければ `mkdir -p` で作成。
 
@@ -85,7 +85,7 @@ allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep"]
 ## wikilink のスコープ規則
 
 vault フォルダの分類とアクセスルールは `~/.claude/CLAUDE.md` の「Obsidian vault 管理」を参照。
-具体的なフォルダ名は `~/.claude/CLAUDE.md` 島内「ホスト情報」の `vault_path` / `ai_note_folder` / `public_note_folders` / `private_note_folders` で定義。
+具体的なフォルダ名は `~/.claude/CLAUDE.md` の「ホスト情報」セクションの `vault_path` / `ai_note_folder` / `public_note_folders` / `private_note_folders` で定義。
 
 **自動でリンクを張る範囲**:
 - `<vault_path>/<ai_note_folder>` 配下: `[[ファイル名]]` で自動 wikilink 可
@@ -381,5 +381,5 @@ default 以外のテンプレートを使った場合:
 
 - このコマンドはどのワークスペースから起動しても同じ場所に保存される (user global commands)
 - 保存先 `<vault_path>/claude{YYYY}/` はクラウドストレージ同期下なら別端末からも閲覧可能
-- Obsidian vault のルートが `<vault_path>` (`CLAUDE.md` 島内「ホスト情報」で定義) なので、保存後すぐ Obsidian で検索・wikilink できる
+- Obsidian vault のルートが `<vault_path>` (`CLAUDE.md` の「ホスト情報」セクションで定義) なので、保存後すぐ Obsidian で検索・wikilink できる
 - 改訂モードで `-2`, `-3` の重複ファイルは作らない

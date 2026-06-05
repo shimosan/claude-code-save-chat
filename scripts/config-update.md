@@ -58,11 +58,11 @@ This library now stores its managed host/folder information in the unified `~/.c
 
 Snapshot scripts record this state as:
 
-- `claude.md`: unified `~/.claude/CLAUDE.md` presence, library-island marker presence, and parsed host-info values.
+- `claude.md`: unified `~/.claude/CLAUDE.md` presence, managed-block marker presence, and parsed host-info values.
 - `claude.legacy_local`: `~/.claude/CLAUDE.local.md` presence and parsed host-info-like values, for migration diagnostics and un-migrated library setups only.
 - `claude`: Claude CLI version and installed slash command names.
 
-Use `claude.md.value.host_info.hostname` as the preferred machine label source. Fall back to `claude.legacy_local` only for machines whose library-managed host/folder information has not yet been migrated to the unified layout. A migrated library setup should normally have `claude.md.value.has_library_island = true`; `claude.legacy_local.value.present` may be true for unrelated user-managed content and is not, by itself, an error.
+Use `claude.md.value.host_info.hostname` as the preferred machine label source. Fall back to `claude.legacy_local` only for machines whose library-managed host/folder information has not yet been migrated to the unified layout. A migrated library setup should normally have `claude.md.value.has_library_island = true` (historical snapshot field name for the managed-block marker); `claude.legacy_local.value.present` may be true for unrelated user-managed content and is not, by itself, an error.
 
 When comparing drift, do not treat a present `claude.legacy_local` on a migrated machine as an active source of truth for this library unless the current `claude.md` host-info is missing. If it contains only unrelated user-managed content, ignore it for library drift decisions.
 
@@ -251,6 +251,12 @@ python3 scripts/config-log-helper.py apply-log-skeleton --machine <machine> --re
 - `nway --patterns`: groups keys by machine split pattern and discards values.
 
 None of these commands decides which side is correct or newer. Use timestamps, apply logs, local policy, and user intent.
+
+### Helper Output Passthrough
+
+If the user asks for helper output "raw", "as-is", "そのまま", "生", or a plain list, show the helper stdout in a near-verbatim form. Do not replace it with only an agent summary. A short preface stating the command and a short note about limitations are fine, but the raw helper output should remain the main content.
+
+If the helper output is too long for the response, show the beginning and the exact command that produced it, then offer a narrower helper command or filter. Do not silently collapse it into a high-level summary when the user requested raw output.
 
 ## Snapshot Discipline
 
