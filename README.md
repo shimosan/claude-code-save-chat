@@ -98,7 +98,7 @@ config-manager は save-chat と同じく **複数エージェントに二枚看
 | **Claude Code 版** | [`commands/config-manager.md`](commands/config-manager.md) | `~/.claude/commands/config-manager.md` |
 | **Codex 版** | [`dotcodex/skills/config-manager/SKILL.md`](dotcodex/skills/config-manager/SKILL.md) | `~/.codex/skills/config-manager/SKILL.md` |
 
-どちらも薄い入口で、実体の workflow・apply recipe・local policy の扱いは [`scripts/config-update.md`](scripts/config-update.md) が持つ。Claude Code 版の展開は `commands/` の他コマンドと同じ load 手順、Codex 版は下記「展開 (Codex)」に従う。
+どちらも薄い入口で、実体の workflow・apply recipe・local policy の扱いは [`scripts/config-update.md`](scripts/config-update.md) が持つ。設定変更・ロールバック等の apply は `scripts/config-update.md` の apply mode の承認手順に従い、具体的変更への明示承認なしに live config を触らない。Claude Code 版の展開は `commands/` の他コマンドと同じ load 手順、Codex 版は下記「展開 (Codex)」に従う。
 
 ## Codex 版 global rules / skills (任意)
 
