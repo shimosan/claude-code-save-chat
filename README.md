@@ -22,7 +22,8 @@
 │   └── CLAUDE.md                ← 共有ルール + 端末設定 + メモリを統合した島構造 (1 ファイル)
 ├── .gitignore                   ← git 除外パターン
 ├── commands/                    ← slash commands
-│   └── save-chat.md             ← 会話を Obsidian vault に保存
+│   ├── save-chat.md             ← 会話を Obsidian vault に保存
+│   └── config-manager.md        ← config snapshot/update workflow への薄い入口
 ├── dotcodex/                    ← 各端末の ~/.codex/ へ deploy する Codex 原本
 │   ├── AGENTS.md                ← Codex global rules adapter
 │   ├── skills/save-chat/SKILL.md ← Codex 版 save-chat (参照型)
@@ -81,6 +82,23 @@ Codex を使う端末でも、save-chat の原典は Claude Code 版の設定フ
 ```
 
 詳細仕様は [`commands/save-chat.md`](commands/save-chat.md) を参照。
+
+## `/config-manager` — 端末設定の review / 比較 / 安全な apply
+
+config snapshot/update workflow への薄い入口 (thin command)。設定の drift 確認、マシン間比較、最近の変更 review、他端末からの設定取り込み、ロールバック、config policy/recipe 管理に使う。実体のワークフローは持たず [`scripts/config-update.md`](scripts/config-update.md) に委譲する。
+
+```
+/config-manager             ← または「設定の差分を見て」等の自然文トリガー
+```
+
+config-manager は save-chat と同じく **複数エージェントに二枚看板で配る**。両エージェントを使う端末では両方を展開する (save-chat と違い Copilot 版は無い):
+
+| | 配布原本 (正) | 展開先 |
+|---|---|---|
+| **Claude Code 版** | [`commands/config-manager.md`](commands/config-manager.md) | `~/.claude/commands/config-manager.md` |
+| **Codex 版** | [`dotcodex/skills/config-manager/SKILL.md`](dotcodex/skills/config-manager/SKILL.md) | `~/.codex/skills/config-manager/SKILL.md` |
+
+どちらも薄い入口で、実体の workflow・apply recipe・local policy の扱いは [`scripts/config-update.md`](scripts/config-update.md) が持つ。Claude Code 版の展開は `commands/` の他コマンドと同じ load 手順、Codex 版は下記「展開 (Codex)」に従う。
 
 ## Codex 版 global rules / skills (任意)
 
