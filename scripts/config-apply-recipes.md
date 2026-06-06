@@ -548,7 +548,8 @@ Inputs:
 # Prefer snapshot content when reproducing another machine exactly.
 approved_style_less_content = snapshot_get(source_snapshot, "crossnote", "style.less.content")
 
-# A source file is also allowed for curated local templates such as local/crossnote-style.less.
+# A source file is also allowed only when the user explicitly approves that path
+# as the source for this apply run.
 approved_source_style_less = None
 ```
 

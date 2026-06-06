@@ -111,6 +111,8 @@ config-manager は save-chat と同じく **複数エージェントに二枚看
 
 config-manager は「snapshot に出た値を機械的に全適用する同期ツール」ではない。snapshot は端末の live 状態をできるだけ網羅的に観測するための材料であり、apply は agent が review-only で差分・意図・危険度を整理し、ユーザーが承認した具体的変更だけを現在端末へ反映する。
 
+config-manager は `local/` に固定の目標値を維持しない。取り込み元は snapshot、ユーザーが明示した値、private policy、または承認済み recipe の入力として都度選ぶ。`local/` は machine inventory / private policy / private recipes などの軽いローカル知識置き場であり、live 設定が `local/` 内の任意ファイルと違うだけでは drift や apply 対象とは扱わない。
+
 apply recipe は、よく使う安全な操作の型を固定するためのもの。snapshot には editor settings のように低リスクで宣言的に再現できる値もあれば、`brew` / `pyenv` / fonts / model list のように provisioning 計画が必要な値、`claude.md` の host-info のように端末固有でコピーしてはいけない値、version/path のような診断値も混在する。したがって、recipe が無い source は即エラーではなく、まず review-only で `low` / `medium` / `high` / `system` / `local-sensitive` / `diagnostic` の性質を分類し、target・old/new・backup・rollback・verification を明示してから承認を求める。反復する ad-hoc 操作だけを public recipe または `local/config-local-recipes.md` へ昇格する。
 
 実装済み recipe には [`scripts/config-apply-recipes.md`](scripts/config-apply-recipes.md) で `risk class` を明示する。未カバー source の一般ルールも同ファイルに置き、流動的な拡張・ツール・環境差を全列挙しない方針にしている。
@@ -210,6 +212,8 @@ Claude Code の `~/.claude/` への `load`(配布)手順の詳細は
 
 - `local/` : 端末固有・個人的な設定や事実 (例: マシン台帳)。git に入れたくないがすぐ参照したいもの。
 - `notes/` : 長期保存の開発メモ・気付き (日付付き md, `YYYY-MM-DD_topic.md` 推奨)。
+
+`local/` は config-manager の固定 target state 置き場ではない。過去に置いていた editor 設定テンプレートは `scratch/` へ退避済みで、必要時に明示承認された source artifact としてだけ参照する。
 
 > **クラウド同期との合わせ技**: 本 library 全体をクラウド同期フォルダ (Dropbox 等) に置いている場合、これらの gitignore 対象フォルダも git / GitHub を経由せず端末間で自動同期される。マシン台帳を全端末で共有する、といった用途に使える。
 

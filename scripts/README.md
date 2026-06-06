@@ -13,6 +13,7 @@ Each script should have a short entry here. Simple scripts can be fully document
 - [`config-log-helper.py`](config-log-helper.py): inspect `log/config/` snapshots/apply logs, find latest valid snapshots, show raw timelines with apply consistency checks, summarize N-way/latest-snapshot drift, and create apply log skeletons. Read-only except `apply-log-skeleton --write`; use `--self-test` for non-destructive fixture tests.
 - [`jsonc-patch-keys.py`](jsonc-patch-keys.py): patch top-level JSONC object keys while preserving comments and unrelated text. Intended for VS Code/Cursor User settings and argv config files; use `--backup` for live config writes and `--self-test` for non-destructive fixture tests.
 - [`patch-vscode-webview-ctrlf.js`](patch-vscode-webview-ctrlf.js): patch installed VS Code/Cursor-style webview extensions so macOS `Control-F` moves the caret forward by one character inside Claude Code and Codex chat inputs. See [`patch-vscode-webview-ctrlf.md`](patch-vscode-webview-ctrlf.md).
+- [`patch-retired-local-target-comments.py`](patch-retired-local-target-comments.py): remove obsolete JSONC comments in VS Code/Cursor User settings that point at retired `local/` editor target/template files. Comment-only, with `--dry-run`, `--write`, `--backup`, and `--self-test`.
 
 ## Conventions
 
