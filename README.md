@@ -107,6 +107,14 @@ config-manager は save-chat と同じく **複数エージェントに二枚看
 
 どちらも薄い入口で、実体の workflow・apply recipe・local policy の扱いは [`scripts/config-update.md`](scripts/config-update.md) が持つ。設定変更・ロールバック等の apply は `scripts/config-update.md` の apply mode の承認手順に従い、具体的変更への明示承認なしに live config を触らない。人間向けの詳しい入口仕様と例は [`commands/config-manager.md`](commands/config-manager.md) を参照。Claude Code 版の展開は `commands/` の他コマンドと同じ load 手順、Codex 版は下記「展開 (Codex)」に従う。
 
+### config-manager の設計思想
+
+config-manager は「snapshot に出た値を機械的に全適用する同期ツール」ではない。snapshot は端末の live 状態をできるだけ網羅的に観測するための材料であり、apply は agent が review-only で差分・意図・危険度を整理し、ユーザーが承認した具体的変更だけを現在端末へ反映する。
+
+apply recipe は、よく使う安全な操作の型を固定するためのもの。snapshot には editor settings のように低リスクで宣言的に再現できる値もあれば、`brew` / `pyenv` / fonts / model list のように provisioning 計画が必要な値、`claude.md` の host-info のように端末固有でコピーしてはいけない値、version/path のような診断値も混在する。したがって、recipe が無い source は即エラーではなく、まず review-only で `low` / `medium` / `high` / `system` / `local-sensitive` / `diagnostic` の性質を分類し、target・old/new・backup・rollback・verification を明示してから承認を求める。反復する ad-hoc 操作だけを public recipe または `local/config-local-recipes.md` へ昇格する。
+
+実装済み recipe には [`scripts/config-apply-recipes.md`](scripts/config-apply-recipes.md) で `risk class` を明示する。未カバー source の一般ルールも同ファイルに置き、流動的な拡張・ツール・環境差を全列挙しない方針にしている。
+
 ## Codex 版 global rules / skills (任意)
 
 Codex でも Claude Code 側のルール、save-chat workflow、config 管理 workflow を参照できる。Codex 版 skill は原則**参照型** — 実行時に library 側または Claude Code 版の原典を仕様として読むので、原典の更新に追従しやすい (フォークではない)。

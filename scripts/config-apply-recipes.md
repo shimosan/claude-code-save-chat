@@ -19,6 +19,49 @@ The workflow and approval protocol live in [`config-update.md`](config-update.md
 - Workspace `.vscode/settings.json` is out of scope. These recipes target global/User editor settings only.
 - If a safe patch cannot be performed, stop and propose a narrower manual edit or a dedicated helper.
 
+## Risk Classes
+
+Risk class describes the expected blast radius of a recipe. It does not replace
+the approval rules in `config-update.md`.
+
+```text
+low              Reversible user-level setting or file update with a narrow scope.
+medium           User-level change with reload, PATH, editor behavior, or extension side effects.
+high             Destructive or hard-to-reverse change such as uninstalling or replacing directories.
+system           Package manager, runtime, font, model, or OS/toolchain provisioning.
+local-sensitive  Identity, host-info, private path, vault, secret-adjacent, or machine-specific value.
+diagnostic       Observed result value; normally not applied directly.
+```
+
+When a recipe has a metadata block, `risk class` is the default risk for the
+normal apply path. A specific operation inside the recipe may still require
+stronger approval, for example uninstalling an extension.
+
+## Uncovered Snapshot Sources
+
+Snapshots may contain sources that have no public recipe, because installed
+extensions, tools, paths, and future snapshot collectors are intentionally
+open-ended. Do not infer that an uncovered value is safe to apply.
+
+For uncovered sources:
+
+- Start in review-only mode.
+- Classify the proposed operation with the risk classes above.
+- Decide whether the value is declarative config, provisioning input, local-sensitive data, or diagnostic output.
+- Propose the target, old/new value, backup plan, rollback plan, and verification method.
+- Ask for explicit approval before changing live configuration.
+- If the same ad-hoc operation becomes repeatable, promote it to this file or to `local/config-local-recipes.md`.
+
+Examples:
+
+```text
+python3.value.path/version          diagnostic; do not apply directly.
+brew.value.leaves                   system; review package plan before install, never uninstall implicitly.
+claude.md.value.host_info           local-sensitive; never copy host-info blindly across machines.
+fonts.value                         system/diagnostic; font install requires a separate plan.
+qwen.value.settings                 uncovered; classify keys before patching because auth/model paths may be sensitive.
+```
+
 ## Snapshot Lookup
 
 Use these snapshot paths before re-discovering shapes:
@@ -33,7 +76,9 @@ Cursor locale                cursor.locale.value
 Git global config            git.value[<git-key>]
 Codex skills                 codex.value.skills
 Copilot prompts              copilot.value.prompts
-Markdown Preview CSS         crossnote.value["style.less"]
+Markdown Preview CSS (exists) crossnote.value["style.less"]
+Markdown Preview CSS (content) crossnote.value["style.less.content"]
+Markdown Preview CSS (sha256) crossnote.value["style.less.sha256"]
 zsh venv helpers             zsh.value.venv_defs
 PowerShell venv helpers      powershell.value.venv_defs
 Git Bash venv helpers        gitbash.value.venv_defs
@@ -196,6 +241,12 @@ def replace_marked_block(text, marker_name, block_text):
 
 ## Recipe: `git.user-name`
 
+Metadata:
+- apply status: implemented
+- risk class: local-sensitive
+- approval: normal, but confirm identity intent
+- rollback: previous git config value
+
 Purpose: set global Git author name.
 
 ```python
@@ -218,6 +269,12 @@ Log: old value, new value, command, verification snapshot.
 
 ## Recipe: `git.user-email`
 
+Metadata:
+- apply status: implemented
+- risk class: local-sensitive
+- approval: normal, but confirm privacy/identity intent
+- rollback: previous git config value
+
 Purpose: set global Git author email.
 
 ```python
@@ -239,6 +296,12 @@ run_checked(["git", "config", "--global", "user.email", old])
 Log: old value, new value, whether privacy was involved, verification snapshot.
 
 ## Recipe: `editor.settings-key`
+
+Metadata:
+- apply status: implemented
+- risk class: low
+- approval: normal
+- rollback: JSONC patch old values or restore backup
 
 Purpose: patch one or more VS Code/Cursor User `settings.json` keys.
 
@@ -309,6 +372,12 @@ Notes:
 
 ## Recipe: `editor.extension-install`
 
+Metadata:
+- apply status: partial
+- risk class: medium
+- approval: normal for install/update; separate explicit approval for uninstall
+- rollback: uninstall only with separate explicit approval
+
 Purpose: install or update a VS Code/Cursor extension.
 
 ```python
@@ -335,6 +404,12 @@ Notes:
 - Extension auto-update can reintroduce drift.
 
 ## Recipe: `editor.locale`
+
+Metadata:
+- apply status: implemented
+- risk class: low
+- approval: normal
+- rollback: JSONC patch old locale or restore backup
 
 Purpose: set VS Code/Cursor UI locale via the editor argv/config file.
 
@@ -367,6 +442,12 @@ elif backup_path:
 Notes: editor reload/restart is usually required.
 
 ## Recipe: `codex.skill-directory`
+
+Metadata:
+- apply status: partial
+- risk class: medium
+- approval: normal for deploy/update; separate explicit approval for replacing non-equivalent directories
+- rollback: restore backup directory
 
 Purpose: deploy or update one Codex skill directory.
 
@@ -408,6 +489,12 @@ Log: source, destination, backup path, verification snapshot.
 
 ## Recipe: `copilot.prompt-file`
 
+Metadata:
+- apply status: partial
+- risk class: low
+- approval: normal
+- rollback: restore backup file
+
 Purpose: deploy or update one Copilot prompt file.
 
 ```python
@@ -447,23 +534,48 @@ Log: source, destination, backup path, verification snapshot.
 
 ## Recipe: `markdown.mpe-css`
 
+Metadata:
+- apply status: implemented
+- risk class: low
+- approval: normal
+- rollback: restore backup file
+
 Purpose: deploy Markdown Preview Enhanced global CSS/Less.
 
+Inputs:
+
 ```python
-source = expand(approved_source_style_less)
+# Prefer snapshot content when reproducing another machine exactly.
+approved_style_less_content = snapshot_get(source_snapshot, "crossnote", "style.less.content")
+
+# A source file is also allowed for curated local templates such as local/crossnote-style.less.
+approved_source_style_less = None
+```
+
+```python
 dest = path_for(platform, "crossnote_style", path_overrides)
 
-assert source.is_file()
 dest.parent.mkdir(parents=True, exist_ok=True)
 
-if not dest.exists():
+if approved_style_less_content is not None:
+    new_text = approved_style_less_content
+elif approved_source_style_less:
+    source = expand(approved_source_style_less)
+    assert source.is_file()
+    new_text = read_text(source)
+else:
+    raise ValueError("markdown.mpe-css requires style.less content or a source file")
+
+old_text = read_text(dest) if dest.exists() else None
+
+if old_text is None:
     backup = None
-elif files_identical(source, dest):
+elif old_text == new_text:
     backup = None
 else:
     backup = backup_file(dest)
 
-shutil.copy2(source, dest)
+write_text(dest, new_text)
 ```
 
 Optional Windows setting when approved:
@@ -483,7 +595,11 @@ Verify:
 
 ```python
 assert dest.is_file()
-# Then record a verification snapshot and check crossnote.value["style.less"].
+# Then record a verification snapshot and check crossnote.value["style.less"] (exists)
+# plus crossnote.value["style.less.content"] (full reproducible content). The sha256
+# should match the approved source's text-normalized sha256; this gives a short
+# equality check, while content preserves the complete MPE CSS for reproduction.
+assert snapshot_get(verification_snapshot, "crossnote", "style.less.content") == new_text
 ```
 
 Rollback:
@@ -496,6 +612,12 @@ if backup:
 Log: source, destination, backup path, verification snapshot.
 
 ## Recipe: `webview.ctrlf-patch`
+
+Metadata:
+- apply status: implemented
+- risk class: medium
+- approval: normal for patch; separate explicit approval for restore
+- rollback: patcher's restore operation, only with explicit approval
 
 Purpose: apply the local macOS webview Control-F forward-character patch.
 
@@ -531,6 +653,12 @@ Log: detected installs, command output, editor reload/test result.
 Notes: this modifies installed extension assets; extension updates may remove the patch.
 
 ## Recipe: `shell.venv-alias`
+
+Metadata:
+- apply status: partial
+- risk class: medium
+- approval: normal
+- rollback: restore shell profile backup
 
 Purpose: add or update shell helpers that activate named virtual environments.
 
