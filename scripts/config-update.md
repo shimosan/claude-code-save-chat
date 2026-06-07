@@ -81,6 +81,8 @@ Allowed:
 - create config snapshot logs under `log/config/`
 - run `config-log-helper.py` read-only commands
 - choose candidate public/private apply recipes and describe what they would do
+- surface low-risk apply candidates when recent apply logs show the same
+  operation pattern, while still requiring approval before any live write
 - propose concise additions to `local/config-policy.md` or `local/config-local-recipes.md`
 
 Forbidden:
@@ -101,13 +103,14 @@ Every apply-mode update should follow:
 
 1. Record or reuse a current snapshot according to Snapshot Discipline.
 2. Interpret the user's intent.
-3. Read relevant logs and local knowledge.
+3. Read relevant snapshots, recent apply logs, and local knowledge. Use past
+   applies as planning context even when they are not the direct source value.
 4. Compare current state with the chosen reference.
 5. Propose a concrete change with old/new values and target.
 6. Get explicit user approval.
 7. Apply the selected public or private recipe.
 8. Verify directly and, when useful, record a verification snapshot.
-9. Record a private config apply log in `log/config/`.
+9. Record a private config apply log in `log/config/` by default.
 10. If the run reveals a stable convention, propose a concise `local/` knowledge update.
 
 ## Local Knowledge
@@ -252,6 +255,32 @@ python3 scripts/config-log-helper.py apply-log-skeleton --machine <machine> --re
 
 None of these commands decides which side is correct or newer. Use timestamps, apply logs, local policy, and user intent.
 
+### Apply Candidate Suggestions
+
+Apply suggestions are allowed in `review-only`, but they should be grounded rather
+than speculative. When a task may lead to apply, check recent apply logs for the
+current machine and related machines before finalizing the plan. Prefer suggesting
+a near-apply candidate when recent apply logs show the same kind of operation, the
+source and target values are clear, and a public or private recipe already covers
+the change.
+
+When showing such candidates:
+
+- label them as suggestions, not planned actions
+- include the recent apply log or timestamp that makes the suggestion plausible
+- show target, old value, new value, recipe, and risk class
+- keep low-confidence, high-risk, destructive, identity/privacy, or provisioning
+  changes in a separate review-only bucket
+- do not apply until the user explicitly approves the concrete change
+
+If there is no relevant recent apply history, keep the output to review and ask
+which differences the user wants to pursue.
+
+This rule also covers maintenance patches whose need recurs after software
+updates. For example, if recent apply logs show that a local webview patch was
+reapplied after extension updates, and current status shows the patch missing,
+it is reasonable to suggest rerunning the patcher as a medium-risk candidate.
+
 ### Helper Output Passthrough
 
 If the user asks for helper output "raw", "as-is", "そのまま", "生", or a plain list, show the helper stdout in a near-verbatim form. Do not replace it with only an agent summary. A short preface stating the command and a short note about limitations are fine, but the raw helper output should remain the main content.
@@ -330,7 +359,9 @@ After applying:
 
 1. Verify directly when possible.
 2. Record a verification snapshot when useful.
-3. Create a `config_apply_<machine>_*.md` apply log.
+3. Create a `config_apply_<machine>_*.md` apply log by default. If an apply is
+   too trivial to log, state that decision and why; otherwise treat a missing
+   apply log as incomplete workflow.
 4. Mention any reload/restart requirement.
 5. Consider whether a concise local policy or local recipe proposal is warranted.
 
