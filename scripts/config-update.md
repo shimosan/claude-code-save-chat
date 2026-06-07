@@ -281,6 +281,18 @@ updates. For example, if recent apply logs show that a local webview patch was
 reapplied after extension updates, and current status shows the patch missing,
 it is reasonable to suggest rerunning the patcher as a medium-risk candidate.
 
+For status-capable maintenance recipes, do not rely only on snapshot diffs because
+the patched state may not be captured in snapshots. If recent apply logs on the
+current machine or related machines show a recipe such as `webview.ctrlf-patch`
+and the current task touches related areas such as editor extensions, webviews,
+editor behavior, or cross-machine editor setup, mention it as a possible
+maintenance candidate. Keep cross-machine suggestions weak: another machine's
+apply log is a reminder that an option exists, not evidence that this machine
+should match it. User preference and machine-specific behavior may intentionally
+differ. A non-mutating status or dry-run command is useful when the user wants to
+pursue the candidate, but the suggestion itself can be based on recent apply
+history.
+
 ### Helper Output Passthrough
 
 If the user asks for helper output "raw", "as-is", "そのまま", "生", or a plain list, show the helper stdout in a near-verbatim form. Do not replace it with only an agent summary. A short preface stating the command and a short note about limitations are fine, but the raw helper output should remain the main content.
