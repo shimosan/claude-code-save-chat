@@ -1,6 +1,10 @@
 # macOS
 .DS_Store
 
+# Python
+__pycache__/
+*.py[cod]
+
 # Local scratch (pre-public versions, personal backups)
 scratch/
 
