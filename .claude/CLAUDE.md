@@ -44,6 +44,12 @@
   記録する **歴史的フィールド名**(「island」は旧称「ライブラリ島」の名残。改名すると過去 snapshot と
   drift が出るため据え置き)。
 
+## Windows PowerShell の UTF-8 読み取り
+- Windows PowerShell 5.1 では BOM なし UTF-8 を既定 encoding で正しく読めないことがある。
+- この library の管理対象テキスト (`.md`, `.json`, `.jsonc`, `.prompt.md`, `SKILL.md`,
+  `AGENTS.md`, `CLAUDE.md`) を `Get-Content` で読む時は `-Encoding UTF8` を明示する。
+- 任意の外部ファイルには、そのファイルの実 encoding を確認してから使う。
+
 ## Codex Git 操作
 - Codex sandbox では `.git` が read-only になりうる。`git status` / `git diff` / `git log` など
   read-only 操作は通常実行する。
