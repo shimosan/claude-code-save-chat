@@ -23,6 +23,12 @@
   library repo の保守ルールはこの `.claude/CLAUDE.md` が正。
 - 詳細は README.md。
 
+## ローカル領域の使い分け
+- `local/` は machine inventory、private policy、private recipes など、継続参照する軽いローカル知識置き場。
+  作業前バックアップ、退避コピー、実験版、旧実体の保全は原則 `scratch/` に置く。
+- `local/` に backup を置くのは、継続的に参照する端末固有資料として明確な理由がある場合に限る。
+  迷う場合は `scratch/` を使う。
+
 ## 管理ブロックのマーカー検出規約
 - `~/.claude/CLAUDE.md`(配布原本は `dotclaude/CLAUDE.md`)の管理ブロックは、行頭が `<!--` で
   `claude-library:begin` / `claude-library:end` を含む **2 行だけ**が実体マーカー。これがゾーン境界
@@ -37,3 +43,10 @@
 - snapshot script (`config-snapshot-{mac,win}.py`) の `has_library_island` は、この実体マーカー有無を
   記録する **歴史的フィールド名**(「island」は旧称「ライブラリ島」の名残。改名すると過去 snapshot と
   drift が出るため据え置き)。
+
+## Codex Git 操作
+- Codex sandbox では `.git` が read-only になりうる。`git status` / `git diff` / `git log` など
+  read-only 操作は通常実行する。
+- `git add` / `git commit` / `git mv` / `git rm` / `git tag` など `.git` に書く操作は、
+  ユーザーが明示指示した時だけ行い、実行時は sandbox 内で試さず最初から権限付きで実行する。
+- `git push` はユーザーの明示指示がある時だけ行う。
