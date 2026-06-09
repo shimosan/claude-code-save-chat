@@ -4,6 +4,12 @@ Claude Code / Codex / Copilot の会話保存と複数端末 config 管理を、
 
 複数端末で利用する Claude Code (CLI / VS Code 拡張 / Cursor 等) の chat 履歴サマリーを Obsidian vault のノートに保存するためのコマンド `/save-chat` と、端末設定の snapshot / drift 確認 / 安全な apply review を行う `/config-manager` を実装する。あわせて、Claude Code / Codex / Copilot 向けの agent 設定、save-chat / config-manager workflow、補助スクリプトをクラウドストレージ (Dropbox / iCloud Drive / Google Drive 等) 経由で配布・共有する。Obsidian vault もクラウドストレージ経由で共有すると便利。
 
+## 免責
+
+このライブラリは個人用の設定・運用補助を公開しているもので、無保証で提供される。内容には未確認・実験的な前提を含む場合があり、作者は利用に伴う設定変更、データ損失、環境不整合、その他の損害について責任を負わない。各コマンドやスクリプトは、内容と影響範囲を確認したうえで自己責任で実行する。
+
+This library publishes personal configuration and operations helpers as-is, without warranty. It may include unverified or experimental assumptions. The author assumes no responsibility for configuration changes, data loss, environment inconsistencies, or any other damage caused by use of this library. Review each command or script and its impact before running it, and use it at your own risk.
+
 ## 配置場所
 
 このフォルダはクラウド同期される場所であればどこに置いてもよく、フォルダ名も自由。`git clone` すると既定で repo 名の `claude-code-save-chat/` になるが、好きにリネームしてよい。各端末では、このフォルダの実パスを `library_path` として `~/.claude/CLAUDE.md` の「ホスト情報」セクションに記録する。

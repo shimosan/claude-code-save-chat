@@ -13,6 +13,7 @@ For any review/apply/config-policy task, read and follow:
 
 1. `<library_path>/scripts/config-update.md`
 2. Only when that workflow tells you to: `<library_path>/scripts/config-apply-recipes.md`
+3. Only when the user asks to run or inspect local patch/recovery utilities: `<library_path>/scripts/config-apply-patches.md`
 
 Do not duplicate policy, private recipes, or apply rules in this skill.
 
@@ -38,6 +39,7 @@ Trigger for requests such as:
 ## Behavior
 
 - For review/apply/config-policy work, read `scripts/config-update.md` first and follow it.
+- For patch/recovery utility requests, read `scripts/config-apply-patches.md`; keep the detailed behavior in the script-specific docs and get explicit approval before any live change.
 - For pure overview requests, you may directly run `scripts/config-log-helper.py timeline`, `drift`, or `nway`; if interpretation, proposal, policy updates, or apply work is needed, return to `scripts/config-update.md`.
 - If the user asks for helper output "raw", "as-is", "そのまま", "生", or a plain list, make the `scripts/config-log-helper.py` stdout the primary response. Add only brief framing before/after it; do not replace the helper output with an agent summary.
 - Treat `local/config-policy.md` and `local/config-local-recipes.md` as private files managed by `scripts/config-update.md`. Do not edit them unless that workflow calls for it and the user explicitly approves the exact change.
