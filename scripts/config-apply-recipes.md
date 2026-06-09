@@ -211,10 +211,10 @@ def json_literal(value):
     return json.dumps(value, ensure_ascii=False, indent=2)
 
 
-def run_jsonc_patch(path, updates, *, create=False, backup=True, dry_run=False):
+def run_jsonc_set_keys(path, updates, *, create=False, backup=True, dry_run=False):
     args = [
         "python3",
-        "scripts/jsonc-patch-keys.py",
+        "scripts/config-jsonc-set-keys.py",
         str(path),
         "--dry-run" if dry_run else "--write",
     ]
@@ -345,7 +345,7 @@ Apply:
 ```python
 settings_path = expand(settings_path)
 
-backup_path = run_jsonc_patch(settings_path, approved_updates, create=True, backup=True)
+backup_path = run_jsonc_set_keys(settings_path, approved_updates, create=True, backup=True)
 ```
 
 Verify:
@@ -359,7 +359,7 @@ Rollback:
 
 ```python
 if old_values:
-    run_jsonc_patch(settings_path, old_values, create=False, backup=True)
+    run_jsonc_set_keys(settings_path, old_values, create=False, backup=True)
 elif backup_path:
     shutil.copy2(backup_path, settings_path)
 ```
@@ -420,7 +420,7 @@ locale = approved_locale
 
 argv_path = path_for(platform, f"{application}_argv", path_overrides)
 
-backup_path = run_jsonc_patch(argv_path, {"locale": locale}, create=True, backup=True)
+backup_path = run_jsonc_set_keys(argv_path, {"locale": locale}, create=True, backup=True)
 ```
 
 Verify:
@@ -434,7 +434,7 @@ Rollback:
 
 ```python
 if old_locale is not None:
-    run_jsonc_patch(argv_path, {"locale": old_locale}, create=False, backup=True)
+    run_jsonc_set_keys(argv_path, {"locale": old_locale}, create=False, backup=True)
 elif backup_path:
     shutil.copy2(backup_path, argv_path)
 ```
@@ -584,7 +584,7 @@ Optional Windows setting when approved:
 ```python
 if approved_mpe_config_path_setting:
     settings_path = path_for(platform, f"{approved_editor_application}_user_settings", path_overrides)
-    run_jsonc_patch(
+    run_jsonc_set_keys(
         settings_path,
         {"markdown-preview-enhanced.configPath": approved_mpe_config_path_setting},
         create=True,

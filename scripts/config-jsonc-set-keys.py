@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Patch top-level JSONC object keys while preserving unrelated text.
+"""Set top-level JSONC object keys while preserving unrelated text.
 
 This helper is intentionally narrow. It edits only top-level object properties,
 which is the shape used by VS Code / Cursor User settings and argv JSONC files.
 
 Examples:
-    python3 scripts/jsonc-patch-keys.py ~/.cursor/argv.json --dry-run --set locale '"en"'
-    python3 scripts/jsonc-patch-keys.py ~/.cursor/argv.json --write --backup --set locale '"en"'
-    python3 scripts/jsonc-patch-keys.py settings.json --write --backup --set editor.fontSize 14
-    python3 scripts/jsonc-patch-keys.py --self-test
+    python3 scripts/config-jsonc-set-keys.py ~/.cursor/argv.json --dry-run --set locale '"en"'
+    python3 scripts/config-jsonc-set-keys.py ~/.cursor/argv.json --write --backup --set locale '"en"'
+    python3 scripts/config-jsonc-set-keys.py settings.json --write --backup --set editor.fontSize 14
+    python3 scripts/config-jsonc-set-keys.py --self-test
 """
 from __future__ import annotations
 
@@ -253,7 +253,7 @@ def parse_updates(pairs: list[list[str]]) -> dict[str, Any]:
     return updates
 
 
-def patch_text(text: str, updates: dict[str, Any]) -> str:
+def set_keys_text(text: str, updates: dict[str, Any]) -> str:
     if not updates:
         return text
 
@@ -398,7 +398,7 @@ def self_test_update_scalar_preserves_comments(tmp: Path) -> None:
 """,
     )
 
-    result = patch_text(target.read_text(encoding="utf-8"), {"locale": "en"})
+    result = set_keys_text(target.read_text(encoding="utf-8"), {"locale": "en"})
     data = load_jsonc(result)
     assert data["locale"] == "en"
     assert data["window.zoomLevel"] == 1
@@ -415,7 +415,7 @@ def self_test_add_key_to_object_without_trailing_comma(tmp: Path) -> None:
 """,
     )
 
-    result = patch_text(target.read_text(encoding="utf-8"), {"editor.wordWrap": "on"})
+    result = set_keys_text(target.read_text(encoding="utf-8"), {"editor.wordWrap": "on"})
     data = load_jsonc(result)
     assert data["editor.fontSize"] == 14
     assert data["editor.wordWrap"] == "on"
@@ -435,7 +435,7 @@ def self_test_update_object_value(tmp: Path) -> None:
 """,
     )
 
-    result = patch_text(
+    result = set_keys_text(
         target.read_text(encoding="utf-8"),
         {
             "workbench.colorCustomizations": {
@@ -453,14 +453,14 @@ def self_test_update_object_value(tmp: Path) -> None:
 def self_test_write_backup_and_create(tmp: Path) -> None:
     target = tmp / "new" / "argv.json"
     target.parent.mkdir(parents=True, exist_ok=True)
-    write_atomic(target, patch_text("{\n}\n", {"locale": "en"}))
+    write_atomic(target, set_keys_text("{\n}\n", {"locale": "en"}))
     data = load_jsonc(target.read_text(encoding="utf-8"))
     assert data["locale"] == "en"
     assert not list(target.parent.glob("argv.json.bak.*"))
 
     backup = target.with_name(f"{target.name}.bak.self-test")
     shutil.copy2(target, backup)
-    write_atomic(target, patch_text(target.read_text(encoding="utf-8"), {"locale": "ja"}))
+    write_atomic(target, set_keys_text(target.read_text(encoding="utf-8"), {"locale": "ja"}))
     data = load_jsonc(target.read_text(encoding="utf-8"))
     assert data["locale"] == "ja"
     assert load_jsonc(backup.read_text(encoding="utf-8"))["locale"] == "en"
@@ -478,7 +478,7 @@ def self_test_duplicate_key_fails(tmp: Path) -> None:
     )
 
     try:
-        patch_text(target.read_text(encoding="utf-8"), {"locale": "en"})
+        set_keys_text(target.read_text(encoding="utf-8"), {"locale": "en"})
     except ValueError as exc:
         assert "duplicate top-level key" in str(exc)
     else:
@@ -493,7 +493,7 @@ def run_self_test() -> int:
         self_test_write_backup_and_create,
         self_test_duplicate_key_fails,
     ]
-    with tempfile.TemporaryDirectory(prefix="jsonc-patch-keys-test-") as tmpdir:
+    with tempfile.TemporaryDirectory(prefix="config-jsonc-set-keys-test-") as tmpdir:
         tmp = Path(tmpdir)
         for test in tests:
             test_dir = tmp / test.__name__
@@ -504,11 +504,11 @@ def run_self_test() -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="patch top-level JSONC keys")
-    parser.add_argument("path", nargs="?", help="JSONC file to patch")
+    parser = argparse.ArgumentParser(description="set top-level JSONC keys")
+    parser.add_argument("path", nargs="?", help="JSONC file to update")
     parser.add_argument("--set", nargs=2, metavar=("KEY", "JSON"), action="append", default=[])
-    parser.add_argument("--dry-run", action="store_true", help="print patched text to stdout")
-    parser.add_argument("--write", action="store_true", help="write patched text back to the file")
+    parser.add_argument("--dry-run", action="store_true", help="print updated text to stdout")
+    parser.add_argument("--write", action="store_true", help="write updated text back to the file")
     parser.add_argument("--backup", action="store_true", help="create <file>.bak.<timestamp> before writing")
     parser.add_argument("--create", action="store_true", help="create a missing file as an empty object")
     parser.add_argument("--self-test", action="store_true", help="run non-destructive temporary-file tests")
@@ -516,7 +516,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.self_test:
         if args.path or args.set or args.dry_run or args.write or args.backup or args.create:
-            parser.error("--self-test cannot be combined with patch arguments")
+            parser.error("--self-test cannot be combined with set arguments")
         return run_self_test()
 
     if not args.path:
@@ -535,11 +535,11 @@ def main(argv: list[str] | None = None) -> int:
     else:
         raise SystemExit(f"error: file does not exist: {path}")
 
-    patched = patch_text(original, updates)
-    validate_jsonc(patched)
+    updated_text = set_keys_text(original, updates)
+    validate_jsonc(updated_text)
 
     if args.dry_run:
-        sys.stdout.write(patched)
+        sys.stdout.write(updated_text)
         return 0
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -547,7 +547,7 @@ def main(argv: list[str] | None = None) -> int:
         backup = path.with_name(f"{path.name}.bak.{ts()}")
         shutil.copy2(path, backup)
         print(backup)
-    write_atomic(path, patched)
+    write_atomic(path, updated_text)
     return 0
 
 

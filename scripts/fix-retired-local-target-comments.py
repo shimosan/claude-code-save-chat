@@ -37,8 +37,8 @@ def ts() -> str:
 
 
 def load_jsonc_validator():
-    helper = Path(__file__).with_name("jsonc-patch-keys.py")
-    spec = importlib.util.spec_from_file_location("jsonc_patch_keys", helper)
+    helper = Path(__file__).with_name("config-jsonc-set-keys.py")
+    spec = importlib.util.spec_from_file_location("config_jsonc_set_keys", helper)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"cannot load JSONC validator from {helper}")
     mod = importlib.util.module_from_spec(spec)

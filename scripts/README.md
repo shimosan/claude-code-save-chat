@@ -14,7 +14,7 @@ Each script should have a short entry here. Simple scripts can be fully document
 - [`config-snapshot-mac.py`](config-snapshot-mac.py): collect a read-only live configuration snapshot from a macOS machine and print JSON, write a temporary `scratch/config_snapshot_<machine>_YYYY-MM-DD_HH-MM-SS.json` with `--scratch`, or write the regular sync log under `log/config/` with `--log`. Refuses to run on non-macOS.
 - [`config-snapshot-win.py`](config-snapshot-win.py): Windows counterpart to `config-snapshot-mac.py`, with Windows-specific paths, `where.exe`, PowerShell/Git Bash sources, and UTF-8-safe subprocess decoding. Refuses to run on non-Windows.
 - [`config-log-helper.py`](config-log-helper.py): inspect `log/config/` snapshots/apply logs, find latest valid snapshots, show raw timelines with apply consistency checks, summarize N-way/latest-snapshot drift, and create apply log skeletons. Read-only except `apply-log-skeleton --write`; use `--self-test` for non-destructive fixture tests.
-- [`jsonc-patch-keys.py`](jsonc-patch-keys.py): patch top-level JSONC object keys while preserving comments and unrelated text. Intended for VS Code/Cursor User settings and argv config files; use `--backup` for live config writes and `--self-test` for non-destructive fixture tests.
+- [`config-jsonc-set-keys.py`](config-jsonc-set-keys.py): set top-level JSONC object keys while preserving comments and unrelated text. Intended for VS Code/Cursor User settings and argv config files; use `--backup` for live config writes and `--self-test` for non-destructive fixture tests.
 
 ### Patch And Recovery Utilities
 
