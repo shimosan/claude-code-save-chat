@@ -1,18 +1,31 @@
 # Config Update
 
-Agent-facing public protocol for reviewing, proposing, and applying approved configuration changes from config snapshots.
+Agent-facing public protocol for reviewing, proposing, and applying approved config-manager recipes.
 
 This file is bootstrap knowledge for Claude Code, Codex, and thin skills such as `config-manager`. It must not contain private machine names, personal email addresses, real home paths, snapshot contents, or user-specific policy. Private knowledge lives in `local/`; append-only run history belongs in `log/config/`.
 
 This is the workflow authority. A thin skill should read this file and follow it; it should not duplicate local policy, private recipes, or apply rules.
 
+## Recipe Terms
+
+A recipe is an approved apply procedure managed by config-manager.
+
+- `recipe_id`: stable identifier for a recipe. Use this field in approval briefs, apply logs, and helper APIs.
+- `recipe_type: config`: regular configuration whose state is captured by config snapshots.
+- `recipe_type: patch`: local patch/fix/recovery procedure whose state is not captured in config snapshots, even if the procedure has its own status check.
+
+Config recipes and patch recipes are both recipes. Do not infer `recipe_type`
+from the `recipe_id` string alone; use the recipe index or the apply log
+metadata when type matters.
+
 ## Roles
 
 - `scripts/config-snapshot-mac.py` / `scripts/config-snapshot-win.py`: input side. They record live state into normalized snapshots.
 - `scripts/config-log-helper.py`: log helper. It reads `log/config/`, compares snapshots, summarizes timelines/drift/N-way state, and creates apply log skeletons. It must not edit live configuration.
-- `scripts/config-apply-recipes.md`: public apply recipes. It describes concrete operations for approved changes.
+- `scripts/config-apply-recipes.md`: public config recipe index. It describes concrete operations for approved snapshot-visible configuration changes.
+- `scripts/config-apply-patches.md`: public patch recipe index. It describes maintenance utilities that may not be represented fully in snapshots.
 - `local/config-policy.md`: private non-code policy and user decisions.
-- `local/config-local-recipes.md`: optional private code-like apply recipes extracted from repeated successful applies.
+- `local/config-local-recipes.md`: optional private code-like recipes extracted from repeated successful applies.
 - `local/machines.md`: optional private machine inventory.
 - `log/config/`: private raw history, including snapshots and apply logs.
 
@@ -80,7 +93,7 @@ Allowed:
 - run the appropriate snapshot script with `--log`
 - create config snapshot logs under `log/config/`
 - run `config-log-helper.py` read-only commands
-- choose candidate public/private apply recipes and describe what they would do
+- choose candidate public/private recipes and describe what they would do
 - surface low-risk apply candidates when recent apply logs show the same
   operation pattern, while still requiring approval before any live write
 - propose concise additions to `local/config-policy.md` or `local/config-local-recipes.md`
@@ -91,7 +104,7 @@ Forbidden:
 - edit editor argv/config files
 - run extension install/uninstall commands
 - copy skills, prompts, CSS, shell profile blocks, or other assets into live user locations
-- run any apply recipe command that changes live configuration
+- run any recipe command that changes live configuration
 - write a completed `config_apply_<machine>_*.md`
 - edit `local/config-policy.md` or `local/config-local-recipes.md` without explicit approval
 
@@ -108,7 +121,7 @@ Every apply-mode update should follow:
 4. Compare current state with the chosen reference.
 5. Propose a concrete change with old/new values and target.
 6. Get explicit user approval.
-7. Apply the selected public or private recipe.
+7. Apply the selected public/private recipe.
 8. Verify directly and, when useful, record a verification snapshot.
 9. Record a private config apply log in `log/config/` by default.
 10. If the run reveals a stable convention, propose a concise `local/` knowledge update.
@@ -123,7 +136,7 @@ Use these filenames:
 
 - `local/machines.md`: machine inventory. Keep host names, OS, hardware, role, and short constraints here.
 - `local/config-policy.md`: private non-code policy. Use for durable decisions, intentional differences, invariants, and warnings.
-- `local/config-local-recipes.md`: optional private code-like recipes. Use for repeatable apply steps that are too user-specific for public `config-apply-recipes.md`.
+- `local/config-local-recipes.md`: optional private code-like recipes. Use for repeatable apply steps that are too user-specific for public `config-apply-recipes.md` or `config-apply-patches.md`.
 
 If a file is missing, continue without it. Do not create missing local files unless the user approves the exact initial content.
 
@@ -178,7 +191,7 @@ Do not put raw apply history, full snapshot values, long machine biographies, se
 
 ### `local/config-local-recipes.md`
 
-This file holds private code-like recipes. It extends public apply recipes but does not replace the public safety protocol.
+This file holds private code-like recipes. It extends public apply procedures but does not replace the public safety protocol.
 
 Suggested shape:
 
@@ -196,7 +209,7 @@ Verify:
 Notes:
 ```
 
-Use this only when a repeated successful apply pattern is too private, path-specific, or user-specific for `scripts/config-apply-recipes.md`.
+Use this only when a repeated successful apply pattern is too private, path-specific, or user-specific for `scripts/config-apply-recipes.md` or `scripts/config-apply-patches.md`.
 
 ### Updating Local Knowledge
 
@@ -242,7 +255,7 @@ python3 scripts/config-log-helper.py nway --expected-os mac
 python3 scripts/config-log-helper.py nway --expected-os mac --patterns
 python3 scripts/config-log-helper.py drift --base-machine <machine> --expected-os mac
 python3 scripts/config-log-helper.py drift --base-machine <machine> --expected-os mac --group-lines
-python3 scripts/config-log-helper.py apply-log-skeleton --machine <machine> --recipe-id <recipe-id>
+python3 scripts/config-log-helper.py apply-log-skeleton --machine <machine> --recipe-id <recipe-id> --recipe-type config
 ```
 
 `timeline`, `nway`, and `drift` are raw summaries. They are useful inputs for agent explanation, not a substitute for judgment.
@@ -261,14 +274,14 @@ Apply suggestions are allowed in `review-only`, but they should be grounded rath
 than speculative. When a task may lead to apply, check recent apply logs for the
 current machine and related machines before finalizing the plan. Prefer suggesting
 a near-apply candidate when recent apply logs show the same kind of operation, the
-source and target values are clear, and a public or private recipe already covers
-the change.
+source and target values are clear when applicable, and a public/private recipe
+already covers the change.
 
 When showing such candidates:
 
 - label them as suggestions, not planned actions
 - include the recent apply log or timestamp that makes the suggestion plausible
-- show target, old value, new value, recipe, and risk class
+- show target, old value, new value when applicable, `recipe_id`, `recipe_type`, and risk class
 - keep low-confidence, high-risk, destructive, identity/privacy, or provisioning
   changes in a separate review-only bucket
 - do not apply until the user explicitly approves the concrete change
@@ -276,14 +289,14 @@ When showing such candidates:
 If there is no relevant recent apply history, keep the output to review and ask
 which differences the user wants to pursue.
 
-This rule also covers maintenance patches whose need recurs after software
+This rule also covers patch recipes whose need recurs after software
 updates. For example, if recent apply logs show that a local webview patch was
 reapplied after extension updates, and current status shows the patch missing,
 it is reasonable to suggest rerunning the patcher as a medium-risk candidate.
 
-For status-capable maintenance recipes, do not rely only on snapshot diffs because
+For status-capable patch recipes, do not rely only on snapshot diffs because
 the patched state may not be captured in snapshots. If recent apply logs on the
-current machine or related machines show a recipe such as `webview.ctrlf-patch`
+current machine or related machines show a `recipe_id` such as `webview.ctrlf-patch`
 and the current task touches related areas such as editor extensions, webviews,
 editor behavior, or cross-machine editor setup, mention it as a possible
 maintenance candidate. Keep cross-machine suggestions weak: another machine's
@@ -345,18 +358,20 @@ User-facing history terms must not depend on internal agent snapshots. "Previous
 
 ## Applying Changes
 
-Concrete public apply procedures live in [`config-apply-recipes.md`](config-apply-recipes.md). Private extensions may live in `local/config-local-recipes.md`.
+Concrete public config recipes live in [`config-apply-recipes.md`](config-apply-recipes.md). Public patch recipes live in [`config-apply-patches.md`](config-apply-patches.md). Private extensions may live in `local/config-local-recipes.md`.
 
-Recipe selection:
+Apply procedure selection:
 
-1. Prefer public recipes when they cover the operation.
-2. Consult private local recipes for user-specific paths, repeated private steps, or constraints.
-3. If public and private recipes conflict, stop and explain the conflict.
-4. If no recipe fits, propose a review-only plan and ask before doing anything live.
+1. Prefer public config recipes when they cover snapshot-visible configuration.
+2. Use public patch recipes for local patch/fix/recovery procedures whose state is not captured in snapshots.
+3. Consult private local recipes for user-specific paths, repeated private steps, or constraints.
+4. If public and private recipes conflict, stop and explain the conflict.
+5. If no recipe fits, propose a review-only plan and ask before doing anything live.
 
 Before applying, state a short apply brief:
 
 - selected `recipe_id`
+- selected `recipe_type`
 - mode: preview, apply, or verify
 - current machine and OS
 - target file, setting key, command, or tool

@@ -12,7 +12,7 @@ Examples:
     python3 scripts/config-log-helper.py timeline --all-machines
     python3 scripts/config-log-helper.py drift --base-machine anomura --expected-os mac
     python3 scripts/config-log-helper.py nway --expected-os mac
-    python3 scripts/config-log-helper.py apply-log-skeleton --machine anomura --recipe-id editor.settings-key
+    python3 scripts/config-log-helper.py apply-log-skeleton --machine anomura --recipe-id editor.settings-key --recipe-type config
     python3 scripts/config-log-helper.py drift --base-machine isopoda --expected-os mac --group-lines
     python3 scripts/config-log-helper.py --self-test
 """
@@ -61,6 +61,7 @@ class LogEntry:
     logged_at: str | None = None
     title: str | None = None
     recipe_id: str | None = None
+    recipe_type: str | None = None
     application: str | None = None
     platform: str | None = None
     target: str | None = None
@@ -96,6 +97,8 @@ class LogEntry:
             data["title"] = self.title
         if self.recipe_id is not None:
             data["recipe_id"] = self.recipe_id
+        if self.recipe_type is not None:
+            data["recipe_type"] = self.recipe_type
         if self.application is not None:
             data["application"] = self.application
         if self.platform is not None:
@@ -233,7 +236,7 @@ def parse_apply_log(path: Path) -> dict[str, Any]:
             continue
         key = field.group("key").strip().lower().replace(" ", "_").replace("-", "_")
         value = clean_apply_value(field.group("value"))
-        if key in {"machine", "applied_at", "logged_at", "recipe_id", "application", "platform", "target"}:
+        if key in {"machine", "applied_at", "logged_at", "recipe_id", "recipe_type", "application", "platform", "target"}:
             if key in {"applied_at", "logged_at"}:
                 try:
                     value = format_iso_ts(parse_ts(value))
@@ -263,6 +266,7 @@ def apply_entry(path: Path, match: re.Match[str]) -> LogEntry:
             logged_at=logged_at,
             title=parsed.get("title"),
             recipe_id=parsed.get("recipe_id"),
+            recipe_type=parsed.get("recipe_type"),
             application=parsed.get("application"),
             platform=parsed.get("platform"),
             target=parsed.get("target"),
@@ -783,9 +787,11 @@ def format_diff_summary(diffs: list[dict[str, Any]], limit: int) -> str:
 def format_apply_line(apply: dict[str, Any]) -> str:
     title = apply.get("title") or apply.get("filename")
     recipe = apply.get("recipe_id") or "unknown-recipe"
+    recipe_type = apply.get("recipe_type")
+    recipe_label = f"{recipe_type}:{recipe}" if recipe_type else recipe
     application = apply.get("application") or "unknown-app"
     applied_at = apply.get("applied_at") or apply.get("timestamp")
-    return f"apply {applied_at}: {recipe} / {application} / {title}"
+    return f"apply {applied_at}: {recipe_label} / {application} / {title}"
 
 
 def timeline_summary(
@@ -885,7 +891,11 @@ def format_timeline_text(summary: dict[str, Any]) -> str:
         if key_text:
             parts.append(f"key={key_text}")
         else:
-            parts.append(f"recipe={item.get('recipe_id') or 'unknown-recipe'}")
+            recipe_text = item.get("recipe_id") or "unknown-recipe"
+            recipe_type = item.get("recipe_type")
+            if recipe_type:
+                recipe_text = f"{recipe_type}:{recipe_text}"
+            parts.append(f"recipe={recipe_text}")
         conflicts = consistency.get("conflicts") or []
         if conflicts:
             parts.append(f"conflict: {','.join(conflicts)}")
@@ -1376,6 +1386,7 @@ def apply_log_skeleton(args: argparse.Namespace) -> str:
         f"- applied_at: {applied_at}",
         f"- logged_at: {logged_at}",
         f"- recipe_id: {args.recipe_id or 'TODO'}",
+        f"- recipe_type: {getattr(args, 'recipe_type', None) or 'TODO'}",
         f"- platform: {args.platform or 'TODO'}",
         f"- application: {args.application or 'TODO'}",
         f"- target: `{args.target or 'TODO'}`",
@@ -1417,7 +1428,10 @@ def print_entries(entries: list[LogEntry], json_output: bool) -> None:
         if entry.kind == "snapshot":
             pieces.extend([entry.os_name or "unknown-os", "valid" if entry.valid else "invalid"])
         elif entry.kind == "apply":
-            pieces.extend([entry.recipe_id or "unknown-recipe", entry.application or "unknown-app", entry.title or entry.path.name])
+            recipe = entry.recipe_id or "unknown-recipe"
+            if entry.recipe_type:
+                recipe = f"{entry.recipe_type}:{recipe}"
+            pieces.extend([recipe, entry.application or "unknown-app", entry.title or entry.path.name])
         if entry.error:
             pieces.append(entry.error)
         pieces.append(str(entry.path))
@@ -1589,6 +1603,7 @@ def make_apply_log(
                 f"- applied_at: {applied_at}",
                 f"- logged_at: {logged_at}",
                 f"- recipe_id: {recipe_id}",
+                "- recipe_type: config",
                 f"- application: {application}",
                 f"- platform: {platform}",
                 "- target: `demo`",
@@ -1806,6 +1821,7 @@ def self_test_apply_log_skeleton(tmp: Path) -> None:
     assert "- applied_at: 2026-06-04T12:34:56" in text
     assert "- logged_at: 2026-06-04T12:34:56" in text
     assert "recipe_id: editor.settings-key" in text
+    assert "recipe_type: TODO" in text
     assert "before.json" in text
 
 
@@ -1899,6 +1915,7 @@ def build_parser() -> argparse.ArgumentParser:
     skeleton.add_argument("--platform")
     skeleton.add_argument("--application")
     skeleton.add_argument("--recipe-id")
+    skeleton.add_argument("--recipe-type", choices=["config", "patch"])
     skeleton.add_argument("--target")
     skeleton.add_argument("--approved-text")
     skeleton.add_argument("--before")

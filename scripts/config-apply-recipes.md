@@ -4,7 +4,7 @@ Agent-facing reference for applying approved configuration changes on the curren
 
 This file is public bootstrap knowledge. It must not contain private machine names, personal email addresses, real home paths, snapshot contents, or user-specific policy. Private policy lives in `local/`; snapshots and apply logs live in `log/config/`.
 
-The workflow and approval protocol live in [`config-update.md`](config-update.md). This file is the apply side: paths, commands, and file operations.
+The workflow and approval protocol live in [`config-update.md`](config-update.md). This file is the config recipe index: paths, commands, and file operations for regular configuration whose state is captured by config snapshots. Recipes in this file use `recipe_type: config`.
 
 ## Core Rules
 
@@ -612,47 +612,6 @@ if backup:
 
 Log: source, destination, backup path, verification snapshot.
 
-## Recipe: `webview.ctrlf-patch`
-
-Metadata:
-- apply status: implemented
-- risk class: medium
-- approval: normal for patch; separate explicit approval for restore
-- rollback: patcher's restore operation, only with explicit approval
-
-Purpose: apply the local macOS webview Control-F forward-character patch.
-
-Preview:
-
-```python
-run_checked(["node", "scripts/patch-vscode-webview-ctrlf.js", "--dry-run"])
-```
-
-Apply:
-
-```python
-args = ["node", "scripts/patch-vscode-webview-ctrlf.js"]
-if approved_all_installs:
-    args.append("--all")
-run_checked(args)
-```
-
-Verify:
-
-```python
-run_checked(["node", "scripts/patch-vscode-webview-ctrlf.js", "--status"])
-```
-
-Rollback, only if approved:
-
-```python
-run_checked(["node", "scripts/patch-vscode-webview-ctrlf.js", "--restore"])
-```
-
-Log: detected installs, command output, editor reload/test result.
-
-Notes: this modifies installed extension assets; extension updates may remove the patch.
-
 ## Recipe: `shell.venv-alias`
 
 Metadata:
@@ -727,6 +686,7 @@ Minimal body:
 - applied_at: <YYYY-MM-DDTHH:MM:SS>
 - logged_at: <YYYY-MM-DDTHH:MM:SS>
 - recipe_id: <recipe-id>
+- recipe_type: config
 - application: <vscode|cursor|git|shell|...>
 - platform: <mac|win|...>
 - target: `<path-or-command>`
