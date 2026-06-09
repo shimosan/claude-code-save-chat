@@ -65,7 +65,7 @@ allowed-tools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep"]
 - **形式**: 小文字 ASCII の kebab-case
 - **第 1 タグは固定**: `claude-chat`
 - **追加タグ数**: 2〜4 個
-- **既存タグ優先**: `Grep -h "tags:" claude{YYYY}/*.md` 相当で語彙を抽出し、近いものがあれば**新規造語せず採用**
+- **既存タグ優先**: `Grep` tool (`output_mode: "content"`) で `tags:` 行と直後の tag リスト行を抽出し、近いものがあれば**新規造語せず採用**。Bash+rg には降りず Grep tool を使う。
 - **新規タグを作る前のチェック**: 既存タグに同義語・上位概念がないか確認
 - **参考カテゴリ** (絶対ではない、表記揺れ防止の目安):
   - ツール系: `claude-code`, `cursor`, `obsidian`, `git`, `github`, `dropbox`, `python`

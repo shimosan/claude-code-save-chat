@@ -59,6 +59,7 @@ Preserve existing frontmatter fields during revision mode according to the canon
 6. If no match exists, use new-note mode:
    - Create the target folder if needed.
    - Inspect existing AI notes for tag vocabulary.
+   - When using `rg` for tag inspection, use `--no-filename` rather than `-h` (`rg -h` means help), and pass multiple patterns with `-e`, for example: `rg --no-filename -e '^tags:' -e '^  - ' <ai_note_folder> -g '*.md'`. This avoids shell glob differences on Windows/Git Bash/PowerShell as well.
    - Use `default` unless another canonical template clearly fits; ask before using any non-default template.
    - Write `{YYYY-MM-DD}-{slug}.md`.
 7. Apply the canonical wikilink rules:
