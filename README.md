@@ -206,9 +206,10 @@ Claude Code の `~/.claude/` への `load`(配布)手順の詳細は
 
 `scripts/` は `/save-chat` 本体とは独立した補助ツール置き場。Claude Code / Codex / VS Code / Cursor 周辺で見つかった再利用可能な修正・診断スクリプトをここに置く。[`scripts/README.md`](scripts/README.md) は目次とし、軽いスクリプトは 1-2 行の説明だけでよい。使い方・注意点・復旧手順が必要なものは、スクリプト専用の `.md` に詳しく書く。
 
-現在の主なスクリプト:
+主な分類:
 
-- [`patch-vscode-webview-ctrlf.js`](scripts/patch-vscode-webview-ctrlf.js): Claude Code / Codex の VS Code/Cursor webview 入力欄で macOS `Control-F` が forward-character として動かない問題を、ローカル拡張 webview への小さな patch で補正する。`--status` / `--dry-run` / `--restore` 対応。詳細は [`scripts/patch-vscode-webview-ctrlf.md`](scripts/patch-vscode-webview-ctrlf.md)。
+- Config workflow and helpers: config snapshot / compare / apply protocol と、JSONC・log 操作用の helper。詳細は [`scripts/README.md`](scripts/README.md) と [`scripts/config-update.md`](scripts/config-update.md)。
+- Patch and recovery utilities: VS Code / Cursor / Codex 周辺の optional local patch・復旧 script。詳細は [`scripts/README.md`](scripts/README.md) と [`scripts/config-apply-patches.md`](scripts/config-apply-patches.md)。
 
 `scripts/` の内容は任意利用。新端末セットアップに必須ではなく、必要な端末で必要なものだけ実行する。
 

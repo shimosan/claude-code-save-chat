@@ -1,4 +1,4 @@
-# `fix-vscode-r-webview-find.py`
+# `patch-vscode-r-webview-find.py`
 
 Stop the vscode-R extension (`reditorsupport.r`) from activating when you open Find (`Cmd/Ctrl+F`) inside an unrelated webview, which otherwise makes a spurious `R: (not attached)` item appear in the status bar.
 
@@ -33,7 +33,7 @@ The built-in webview Find still works everywhere; only the spurious activation a
 From this repository:
 
 ```bash
-python3 scripts/fix-vscode-r-webview-find.py
+python3 scripts/patch-vscode-r-webview-find.py
 ```
 
 Then reload the editor window:
@@ -45,7 +45,7 @@ Developer: Reload Window
 Show what would change without writing files:
 
 ```bash
-python3 scripts/fix-vscode-r-webview-find.py --dry-run
+python3 scripts/patch-vscode-r-webview-find.py --dry-run
 ```
 
 ## Restore
@@ -53,7 +53,7 @@ python3 scripts/fix-vscode-r-webview-find.py --dry-run
 Restore `package.json` from the byte-for-byte `.orig` backup the script made:
 
 ```bash
-python3 scripts/fix-vscode-r-webview-find.py --restore
+python3 scripts/patch-vscode-r-webview-find.py --restore
 ```
 
 Then reload the editor window.
@@ -70,7 +70,7 @@ By default the script scans common per-user extension roots:
 For unusual installs, point it at a specific directory:
 
 ```bash
-python3 scripts/fix-vscode-r-webview-find.py --extensions-dir /path/to/extensions
+python3 scripts/patch-vscode-r-webview-find.py --extensions-dir /path/to/extensions
 ```
 
 or set `$VSCODE_EXTENSIONS`.

@@ -27,22 +27,22 @@ This file is separate from [`config-apply-recipes.md`](config-apply-recipes.md).
 
 ### `vscode-r.webview-find-patch`
 
-- Script: [`fix-vscode-r-webview-find.py`](fix-vscode-r-webview-find.py)
-- Docs: [`fix-vscode-r-webview-find.md`](fix-vscode-r-webview-find.md)
+- Script: [`patch-vscode-r-webview-find.py`](patch-vscode-r-webview-find.py)
+- Docs: [`patch-vscode-r-webview-find.md`](patch-vscode-r-webview-find.md)
 - Purpose: stop the vscode-R extension from activating when Find is opened in unrelated webviews.
-- Preview: `python3 scripts/fix-vscode-r-webview-find.py --dry-run`
-- Apply: `python3 scripts/fix-vscode-r-webview-find.py`
-- Restore: `python3 scripts/fix-vscode-r-webview-find.py --restore`
+- Preview: `python3 scripts/patch-vscode-r-webview-find.py --dry-run`
+- Apply: `python3 scripts/patch-vscode-r-webview-find.py`
+- Restore: `python3 scripts/patch-vscode-r-webview-find.py --restore`
 
-### `editor.retired-local-target-comments`
+### `editor.retired-local-target-comments-fix`
 
-- Script: [`patch-retired-local-target-comments.py`](patch-retired-local-target-comments.py)
+- Script: [`fix-retired-local-target-comments.py`](fix-retired-local-target-comments.py)
 - Purpose: remove obsolete comments in VS Code/Cursor User settings that point at retired `local/` editor target/template files.
-- Preview: `python3 scripts/patch-retired-local-target-comments.py --dry-run`
-- Apply: `python3 scripts/patch-retired-local-target-comments.py --write --backup`
-- Test: `python3 scripts/patch-retired-local-target-comments.py --self-test`
+- Preview: `python3 scripts/fix-retired-local-target-comments.py --dry-run`
+- Apply: `python3 scripts/fix-retired-local-target-comments.py --write --backup`
+- Test: `python3 scripts/fix-retired-local-target-comments.py --self-test`
 
-### `cursor.hidden-agent-views`
+### `cursor.hidden-agent-views-fix`
 
 - Script: [`fix-cursor-hidden-agent-views.py`](fix-cursor-hidden-agent-views.py)
 - Docs: [`fix-cursor-hidden-agent-views.md`](fix-cursor-hidden-agent-views.md)
@@ -50,7 +50,7 @@ This file is separate from [`config-apply-recipes.md`](config-apply-recipes.md).
 - Preview: `python3 scripts/fix-cursor-hidden-agent-views.py --db "/path/to/state.vscdb" --dry-run`
 - Apply: `python3 scripts/fix-cursor-hidden-agent-views.py --db "/path/to/state.vscdb"`
 
-### `codex.git-fsmonitor-env`
+### `codex.git-fsmonitor-env-patch`
 
 - Script: [`patch-codex-git-fsmonitor-env.sh`](patch-codex-git-fsmonitor-env.sh)
 - Docs: [`patch-codex-git-fsmonitor-env.md`](patch-codex-git-fsmonitor-env.md)
@@ -59,4 +59,3 @@ This file is separate from [`config-apply-recipes.md`](config-apply-recipes.md).
 - Apply: `bash scripts/patch-codex-git-fsmonitor-env.sh apply`
 - Remove: `bash scripts/patch-codex-git-fsmonitor-env.sh remove`
 - Fallback blocker: `bash scripts/patch-codex-git-fsmonitor-env.sh blocker-apply /path/to/repo`
-

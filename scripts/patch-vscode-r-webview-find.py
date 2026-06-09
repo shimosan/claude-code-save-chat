@@ -33,10 +33,10 @@ Upstream issue:
   https://github.com/REditorSupport/vscode-R/issues/1711
 
 Usage:
-  python3 fix-vscode-r-webview-find.py                 # apply the patch
-  python3 fix-vscode-r-webview-find.py --dry-run        # show what would change
-  python3 fix-vscode-r-webview-find.py --restore        # restore from .orig
-  python3 fix-vscode-r-webview-find.py --extensions-dir /path/to/extensions
+  python3 patch-vscode-r-webview-find.py                 # apply the patch
+  python3 patch-vscode-r-webview-find.py --dry-run        # show what would change
+  python3 patch-vscode-r-webview-find.py --restore        # restore from .orig
+  python3 patch-vscode-r-webview-find.py --extensions-dir /path/to/extensions
 """
 import argparse
 import glob
