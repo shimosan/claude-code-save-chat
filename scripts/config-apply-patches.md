@@ -63,6 +63,20 @@ This file is separate from [`config-apply-recipes.md`](config-apply-recipes.md).
 - Preview: `python3 scripts/fix-cursor-hidden-agent-views.py --db "/path/to/state.vscdb" --dry-run`
 - Apply: `python3 scripts/fix-cursor-hidden-agent-views.py --db "/path/to/state.vscdb"`
 
+### `cursor.agent-worker-disable-patch`
+
+- Recipe type: `patch`
+- Script: [`patch-cursor-agent-worker-disable.py`](patch-cursor-agent-worker-disable.py)
+- Docs: [`patch-cursor-agent-worker-disable.md`](patch-cursor-agent-worker-disable.md)
+- Applies to: macOS Cursor globalStorage `state.vscdb` when built-in `anysphere.cursor-agent-worker` is stuck showing Restart Extension / Reload Window prompts and the UI cannot disable it.
+- Log target: Cursor globalStorage `state.vscdb`, backup DB path, and `extensionsIdentifiers/disabled` before/after values.
+- Purpose: disable or re-enable Cursor's built-in `cursor-agent-worker` by editing Cursor's disabled extension identifier list without modifying installed application files.
+- Status: `python3 scripts/patch-cursor-agent-worker-disable.py --status`
+- Preview apply: `python3 scripts/patch-cursor-agent-worker-disable.py --apply --dry-run`
+- Apply: `python3 scripts/patch-cursor-agent-worker-disable.py --apply`
+- Remove: `python3 scripts/patch-cursor-agent-worker-disable.py --remove`
+- Test: `python3 scripts/patch-cursor-agent-worker-disable.py --self-test`
+
 ### `codex.git-fsmonitor-env-patch`
 
 - Recipe type: `patch`
