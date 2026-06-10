@@ -6,7 +6,7 @@
 ## 構造
 - `dotclaude/` — 各端末の `~/.claude/` へ deploy する Claude Code 原本。
   - `dotclaude/CLAUDE.md` → `~/.claude/CLAUDE.md`(共有ルール + 端末設定 + メモリを統合した管理ブロック構造。1 ファイル。旧 `CLAUDE.local.md` はこの library の host/folder 情報用途では使わず、本ファイルへ統合)
-- `commands/*.md` — `~/.claude/commands/` へ deploy する slash command。
+  - `dotclaude/commands/*.md` → `~/.claude/commands/` へ deploy する slash command。
 - `dotcodex/` — 各端末の `~/.codex/` へ deploy する Codex 原本。
   - `dotcodex/AGENTS.md` → `~/.codex/AGENTS.md`(Claude Code 側ルール参照 adapter)
   - `dotcodex/skills/*/SKILL.md` → `~/.codex/skills/*/SKILL.md`
@@ -14,7 +14,7 @@
 - `local/`, `notes/`, `scratch/` — gitignored なローカル領域。
 
 ## 編集の正
-- 共有ルール・コマンド・skill の編集の正は library 側(`dotclaude/`, `commands/`, `dotcodex/`, `copilot/`)。
+- 共有ルール・コマンド・skill の編集の正は library 側(`dotclaude/`, `dotcodex/`, `copilot/`)。
   端末側(`~/.claude/`, `~/.codex/`, VS Code User prompts 等)を直接いじったら library へ戻す。
 - load の手順と diff/merge ポリシーは `dotclaude/CLAUDE.md` の「配布 (load)」を参照(save は廃止 — 端末→library の書き戻しはしない)。
 - `dotclaude/CLAUDE.md` は subfolder ゆえ自動ロードされない。これは意図的 —

@@ -15,10 +15,10 @@ This library publishes personal configuration and operations helpers as-is, with
 このフォルダはクラウド同期される場所であればどこに置いてもよく、フォルダ名も自由。`git clone` すると既定で repo 名の `claude-code-save-chat/` になるが、好きにリネームしてよい。各端末では、このフォルダの実パスを `library_path` として `~/.claude/CLAUDE.md` の「ホスト情報」セクションに記録する。
 
 例:
-- `~/Dropbox/library/claude-code-save-chat/`  (clone 既定)
-- `~/iCloud/claude-code-save-chat/`
+- `~/Dropbox/claude-code-save-chat/`  (クラウド直下に clone 既定名のまま)
+- `~/iCloud/<any>/<folders>/claude-code-save-chat/`  (中間フォルダ階層も自由)
 - `~/GoogleDrive/agent-config/`  (任意にリネーム)
-- `~/Dropbox/library/claude/`  (作者の実運用例: `claude` にリネーム)
+- `~/Dropbox/library/claude/`  (作者の実運用例: `library/` 配下に置き `claude` にリネーム)
 
 ## 構成
 
@@ -28,11 +28,11 @@ This library publishes personal configuration and operations helpers as-is, with
 ├── .claude/CLAUDE.md            ← library repo の保守ルール (Claude Code 用・この repo 編集用、配布しない)
 ├── AGENTS.md                    ← library repo の保守ルール (Codex 用・.claude/CLAUDE.md を参照する adapter、配布しない)
 ├── dotclaude/                   ← 各端末の ~/.claude/ へ deploy する Claude Code 原本
-│   └── CLAUDE.md                ← 共有ルール + 端末設定 + メモリを統合した管理ブロック構造 (1 ファイル)
+│   ├── CLAUDE.md                ← 共有ルール + 端末設定 + メモリを統合した管理ブロック構造 (1 ファイル)
+│   └── commands/                ← ~/.claude/commands/ へ deploy する slash commands
+│       ├── save-chat.md         ← 会話を Obsidian vault に保存
+│       └── config-manager.md    ← config snapshot/update workflow への薄い入口
 ├── .gitignore                   ← git 除外パターン
-├── commands/                    ← slash commands
-│   ├── save-chat.md             ← 会話を Obsidian vault に保存
-│   └── config-manager.md        ← config snapshot/update workflow への薄い入口
 ├── dotcodex/                    ← 各端末の ~/.codex/ へ deploy する Codex 原本
 │   ├── AGENTS.md                ← Codex global rules adapter
 │   ├── skills/save-chat/SKILL.md ← Codex 版 save-chat (参照型)
@@ -97,7 +97,7 @@ Codex を使う端末でも、save-chat の原典は Claude Code 版の設定フ
 save-chatしてください        ← Codex 版 skill の自然文トリガー
 ```
 
-詳細仕様は [`commands/save-chat.md`](commands/save-chat.md) を参照。
+詳細仕様は [`dotclaude/commands/save-chat.md`](dotclaude/commands/save-chat.md) を参照。
 
 ## `/config-manager` — 端末設定の review / 比較 / 安全な apply
 
@@ -114,10 +114,10 @@ config-manager は save-chat と同じく **複数エージェントに二枚看
 
 | | 配布原本 (正) | 展開先 |
 |---|---|---|
-| **Claude Code 版** | [`commands/config-manager.md`](commands/config-manager.md) | `~/.claude/commands/config-manager.md` |
+| **Claude Code 版** | [`dotclaude/commands/config-manager.md`](dotclaude/commands/config-manager.md) | `~/.claude/commands/config-manager.md` |
 | **Codex 版** | [`dotcodex/skills/config-manager/SKILL.md`](dotcodex/skills/config-manager/SKILL.md) | `~/.codex/skills/config-manager/SKILL.md` |
 
-どちらも薄い入口で、実体の workflow・recipe・local policy の扱いは [`scripts/config-update.md`](scripts/config-update.md) が持つ。設定変更・ロールバック等の apply は `scripts/config-update.md` の apply mode の承認手順に従い、具体的変更への明示承認なしに live config を触らない。人間向けの詳しい入口仕様と例は [`commands/config-manager.md`](commands/config-manager.md) を参照。Claude Code 版の展開は `commands/` の他コマンドと同じ load 手順、Codex 版は下記「展開 (Codex)」に従う。
+どちらも薄い入口で、実体の workflow・recipe・local policy の扱いは [`scripts/config-update.md`](scripts/config-update.md) が持つ。設定変更・ロールバック等の apply は `scripts/config-update.md` の apply mode の承認手順に従い、具体的変更への明示承認なしに live config を触らない。人間向けの詳しい入口仕様と例は [`dotclaude/commands/config-manager.md`](dotclaude/commands/config-manager.md) を参照。Claude Code 版の展開は `dotclaude/commands/` の他コマンドと同じ load 手順、Codex 版は下記「展開 (Codex)」に従う。
 
 ### config-manager の設計思想
 
@@ -135,7 +135,7 @@ snapshot には editor settings のように低リスクで宣言的に再現で
 
 Codex でも Claude Code 側のルール、save-chat workflow、config 管理 workflow を参照できる。Codex 版 skill は原則**参照型** — 実行時に library 側または Claude Code 版の原典を仕様として読むので、原典の更新に追従しやすい (フォークではない)。
 
-> **前提: `~/.claude/CLAUDE.md` が必須。** spec (`commands/save-chat.md`) は `~/.claude/` に無ければ library 側 (`<library_path>/commands/`) へフォールバックする。ただし `CLAUDE.md` の「ホスト情報」セクション (`vault_path` / `library_path` 等) は端末ローカルで library に複製が無く、これが無いと保存先も library の位置も解決できない。(移行前の端末で旧 `~/.claude/CLAUDE.local.md` が残っていれば、そこからの解決もフォールバックとして可。)
+> **前提: `~/.claude/CLAUDE.md` が必須。** spec (`dotclaude/commands/save-chat.md`) は `~/.claude/` に無ければ library 側 (`<library_path>/dotclaude/commands/`) へフォールバックする。ただし `CLAUDE.md` の「ホスト情報」セクション (`vault_path` / `library_path` 等) は端末ローカルで library に複製が無く、これが無いと保存先も library の位置も解決できない。(移行前の端末で旧 `~/.claude/CLAUDE.local.md` が残っていれば、そこからの解決もフォールバックとして可。)
 
 > **Codex 単体利用時の注意:** Claude Code binary が未導入でもよいが、`~/.claude/CLAUDE.md`(「ホスト情報」セクション記入済み)は必要。可能なら `~/.claude/commands/save-chat.md` も通常の Claude Code セットアップと同じ形で配置する。これが無い場合、Codex skill は `CLAUDE.md` の `library_path` から library 側原本へフォールバックする。
 
@@ -165,7 +165,7 @@ Codex でも Claude Code 側のルール、save-chat workflow、config 管理 wo
 
 VS Code + GitHub Copilot でも save-chat を使える。Copilot 版は**参照型** — 実行時に Claude Code 版の原典 (`~/.claude/commands/save-chat.md`) を仕様として読む (フォークではない)。
 
-> **前提: `~/.claude/CLAUDE.md` が必須。** spec (`commands/save-chat.md`) は `~/.claude/` に無ければ library 側 (`<library_path>/commands/`) へフォールバックする (Codex 版と同等)。ただし `CLAUDE.md` の「ホスト情報」セクション (`vault_path` / `library_path` 等) は端末ローカルで library に複製が無く、これが無いと保存先も library の位置も解決できない。(移行前の端末で旧 `~/.claude/CLAUDE.local.md` が残っていれば、そこからの解決もフォールバックとして可。)
+> **前提: `~/.claude/CLAUDE.md` が必須。** spec (`dotclaude/commands/save-chat.md`) は `~/.claude/` に無ければ library 側 (`<library_path>/dotclaude/commands/`) へフォールバックする (Codex 版と同等)。ただし `CLAUDE.md` の「ホスト情報」セクション (`vault_path` / `library_path` 等) は端末ローカルで library に複製が無く、これが無いと保存先も library の位置も解決できない。(移行前の端末で旧 `~/.claude/CLAUDE.local.md` が残っていれば、そこからの解決もフォールバックとして可。)
 
 - **呼び出し**: Copilot Chat の `/save-chat` (`/save-chat <slug>` で slug 指定)
 - **frontmatter**: `source: github-copilot`
@@ -203,7 +203,7 @@ Claude Code は vault 内のフォルダを 3 系統に分類して扱う:
 
 ## 運用
 
-基本的に library 側 (`dotclaude/`, `commands/`, `dotcodex/`, `copilot/`) を編集の正とし、
+基本的に library 側 (`dotclaude/`, `dotcodex/`, `copilot/`) を編集の正とし、
 各端末の `$HOME` 配下や editor user prompts へ展開する。端末側で直接編集した場合は、
 差分を確認して library 側へ戻す。
 

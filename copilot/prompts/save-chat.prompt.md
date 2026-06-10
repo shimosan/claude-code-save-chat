@@ -5,7 +5,7 @@ agent: "agent"
 Save the current conversation as a markdown note by following the existing Claude save-chat workflow as closely as possible.
 
 Runtime requirements:
-- Treat ~/.claude/commands/save-chat.md as the source specification. If it is missing, resolve library_path from the host-info section of ~/.claude/CLAUDE.md (or, on un-migrated machines, ~/.claude/CLAUDE.local.md) and read <library_path>/commands/save-chat.md instead.
+- Treat ~/.claude/commands/save-chat.md as the source specification. If it is missing, resolve library_path from the host-info section of ~/.claude/CLAUDE.md (or, on un-migrated machines, ~/.claude/CLAUDE.local.md) and read <library_path>/dotclaude/commands/save-chat.md instead.
 - Read ~/.claude/CLAUDE.md to resolve vault_path, library_path, and machine-local vault settings from its host-info ("ホスト情報") section. These values are machine-local and have no library fallback (the master carries only placeholders); on machines not yet migrated they may still live in ~/.claude/CLAUDE.local.md. If they are missing everywhere, ask the user instead of guessing.
 - Read ~/.claude/CLAUDE.md for vault scope, wikilink, and privacy rules (its shared-rules section). If the file is missing, fall back to <library_path>/dotclaude/CLAUDE.md for those rules.
 - Use the current year to target <vault_path>/claudeYYYY/.
@@ -17,7 +17,7 @@ Copilot-specific frontmatter (override the canonical defaults):
 - model / workspace / machine: follow the canonical rules (current Copilot model if known; workspace = cwd; machine = `hostname -s`).
 
 Execution steps:
-1. Read the source specification (~/.claude/commands/save-chat.md, or <library_path>/commands/save-chat.md if the former is missing) and follow its rules unless a required tool is unavailable.
+1. Read the source specification (~/.claude/commands/save-chat.md, or <library_path>/dotclaude/commands/save-chat.md if the former is missing) and follow its rules unless a required tool is unavailable.
 2. Determine the slug.
 3. Search for an existing note matching *-{slug}.md in the current year folder, then the previous year folder.
 4. If a matching note exists, update it in revision mode.

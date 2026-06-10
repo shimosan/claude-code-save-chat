@@ -16,7 +16,7 @@ Before saving, read these files in order:
 
 On machines not yet migrated to the unified layout, those machine-local settings may still live in `~/.claude/CLAUDE.local.md`; read it as a fallback when `CLAUDE.md` has no host-info section.
 
-Any `<library_path>/...` fallback below needs `library_path`, which lives in the host-info section of `~/.claude/CLAUDE.md` (or, on un-migrated machines, in `~/.claude/CLAUDE.local.md`) — read that first to resolve it. If `~/.claude/commands/save-chat.md` is missing, try `<library_path>/commands/save-chat.md`; the shared rules of `~/.claude/CLAUDE.md` fall back to `<library_path>/dotclaude/CLAUDE.md`. The host-info values themselves are machine-local and have no library fallback (the master carries only placeholders) — if they are missing (and no legacy `CLAUDE.local.md` exists), ask the user. Do not invent vault paths, folder names, or privacy scopes.
+Any `<library_path>/...` fallback below needs `library_path`, which lives in the host-info section of `~/.claude/CLAUDE.md` (or, on un-migrated machines, in `~/.claude/CLAUDE.local.md`) — read that first to resolve it. If `~/.claude/commands/save-chat.md` is missing, try `<library_path>/dotclaude/commands/save-chat.md`; the shared rules of `~/.claude/CLAUDE.md` fall back to `<library_path>/dotclaude/CLAUDE.md`. The host-info values themselves are machine-local and have no library fallback (the master carries only placeholders) — if they are missing (and no legacy `CLAUDE.local.md` exists), ask the user. Do not invent vault paths, folder names, or privacy scopes.
 
 ## Invocation
 
