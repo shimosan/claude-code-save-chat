@@ -3,20 +3,31 @@ name: save-chat
 description: Save the current Codex conversation into the user's Obsidian vault as a markdown note. Use when the user asks to "save-chat", "/save-chat", save this chat/conversation/session, or save the current discussion to Obsidian, with optional slug support.
 ---
 
-# save-chat
+# save-chat (Codex skin)
 
-Save the current Codex conversation to the user's Obsidian vault by following the Claude Code `save-chat` workflow as the source specification.
+Thin Codex entrypoint for the shared save-chat core. Do not duplicate the note format or
+workflow rules in this skill.
 
 ## Source Of Truth
 
-Before saving, read these files in order:
+For any save-chat task, read and follow:
 
-1. `~/.claude/commands/save-chat.md` - canonical save-chat specification.
-2. `~/.claude/CLAUDE.md` - machine-local `vault_path`, `library_path`, `ai_note_folder`, `public_note_folders`, `private_note_folders`, and host naming (the "ホスト情報" / host-info section), plus vault access, wikilink, and privacy rules.
+1. `<library_path>/scripts/save-chat-core.md` — the shared save-chat specification
+   (workflow authority).
+2. `~/.claude/CLAUDE.md` — the host-info ("ホスト情報") section (`vault_path`, `library_path`,
+   `ai_note_folder`, `public_note_folders`, `private_note_folders`) and the Obsidian vault
+   management rules (vault access, wikilink, privacy).
 
-On machines not yet migrated to the unified layout, those machine-local settings may still live in `~/.claude/CLAUDE.local.md`; read it as a fallback when `CLAUDE.md` has no host-info section.
+## Resolve `<library_path>`
 
-Any `<library_path>/...` fallback below needs `library_path`, which lives in the host-info section of `~/.claude/CLAUDE.md` (or, on un-migrated machines, in `~/.claude/CLAUDE.local.md`) — read that first to resolve it. If `~/.claude/commands/save-chat.md` is missing, try `<library_path>/dotclaude/commands/save-chat.md`; the shared rules of `~/.claude/CLAUDE.md` fall back to `<library_path>/dotclaude/CLAUDE.md`. The host-info values themselves are machine-local and have no library fallback (the master carries only placeholders) — if they are missing (and no legacy `CLAUDE.local.md` exists), ask the user. Do not invent vault paths, folder names, or privacy scopes.
+Use the current workspace if it contains `scripts/save-chat-core.md`.
+
+If not, read `library_path` from the host-info section of `~/.claude/CLAUDE.md` (or, on machines
+not yet migrated to the unified layout, from `~/.claude/CLAUDE.local.md`). If neither defines it,
+ask the user. Do not invent paths, vault folder names, or privacy scopes.
+
+If the core file cannot be read, stop and report; do not save to a fallback path unless the user
+explicitly asks for it.
 
 ## Invocation
 
@@ -27,56 +38,51 @@ Accept natural-language requests such as:
 - `save-chat <slug>`
 - `この会話をObsidianに保存してください`
 
-If the user provides a slug, use it as the canonical spec defines. If not, derive one from the conversation topic.
+If the user provides a slug, use it as the core defines. If not, derive one from the
+conversation topic per the core's slug rules.
 
-## Codex-Specific Metadata
+## Codex binding (implements the core's platform binding contract)
 
-Follow the canonical frontmatter format, with these Codex-specific adjustments:
-
-- `source: codex`
+- `source`: `codex`
+- `model` and `session_id`: read from the local Codex transcript:
+  1. Resolve `CODEX_HOME` (default `~/.codex`).
+  2. Identify the current thread in `$CODEX_HOME/session_index.jsonl`. Match both thread id and
+     thread name; if the current thread cannot be identified with confidence (e.g. multiple
+     concurrent Codex windows), omit both fields.
+  3. Locate the transcript JSONL containing that thread id under `$CODEX_HOME/sessions/**/`
+     (filename like `rollout-<timestamp>-<thread-id>.jsonl`).
+  4. Read `payload.model` from the latest `turn_context` line → `model:` (e.g. `gpt-5.5`).
+  5. Record the Codex thread id as `session_id:`.
+  6. If `payload.effort` (reasoning effort) is available in the same `turn_context`, append it in
+     parentheses per the core format: `model: gpt-5.5 (medium)`. If effort is unavailable, record
+     the model ID alone.
+  7. If any path or schema cannot be read, omit the affected fields. Never guess, never fill from
+     UI hearsay, and never use Claude Code's `~/.claude/projects/*.jsonl` method.
 - `workspace`: current working directory as an absolute path.
 - `machine`: short hostname from `hostname -s`.
-- `model`: include the current Codex model only if it is explicitly available in the session context; otherwise omit the field rather than guessing.
-- `session_id`: omit unless a stable Codex session identifier is explicitly available. Do NOT use the canonical ~/.claude/projects/<encoded>/*.jsonl method — those are Claude Code's sessions and are unrelated to this Codex chat.
 
-Preserve existing frontmatter fields during revision mode according to the canonical rules. Do not change initial-context fields except where the canonical spec allows it.
+Preserve existing frontmatter fields during revision mode according to the core rules.
 
-## Workflow
+## Tool conventions
 
-1. Read the source-of-truth files.
-2. Resolve `vault_path` and target the current-year AI note folder. If `ai_note_folder` contains `{YYYY}`, replace it with the current year; otherwise follow the canonical `<vault_path>/claudeYYYY/` rule unless local settings explicitly define a different target.
-3. Determine the slug:
-   - If the user supplied a slug, use it.
-   - Otherwise generate a 3-6 word lowercase ASCII kebab-case noun phrase, avoiding generic words like `note`, `discussion`, `meeting`, and `chat`.
-4. Search for an existing `*-{slug}.md` note in the current-year AI note folder, then previous-year AI note folder.
-5. If a match exists, use revision mode:
-   - Read the existing note.
-   - Preserve the existing template unless changing it is necessary and the user approves.
-   - Classify the change as small or large using the canonical criteria.
-   - Update `last_revised`.
-   - Merge same-day small revisions with the canonical `×N` notation; otherwise append a new revision-history row.
-   - Overwrite the existing file; do not create `-2`, `-3`, or duplicate files.
-6. If no match exists, use new-note mode:
-   - Create the target folder if needed.
-   - Inspect existing AI notes for tag vocabulary.
-   - When using `rg` for tag inspection, use `--no-filename` rather than `-h` (`rg -h` means help), and pass multiple patterns with `-e`, for example: `rg --no-filename -e '^tags:' -e '^  - ' <ai_note_folder> -g '*.md'`. This avoids shell glob differences on Windows/Git Bash/PowerShell as well.
-   - Use `default` unless another canonical template clearly fits; ask before using any non-default template.
-   - Write `{YYYY-MM-DD}-{slug}.md`.
-7. Apply the canonical wikilink rules:
-   - AI and public note folders may be linked automatically after existence checks.
-   - Private folders may be listed by filename, but content reads, quotations, or wikilinks require explicit user direction and any additional confirmation required by the canonical rules.
-   - Write Obsidian wikilinks bare, for example `[[2026-05-29-example]]`, not inside backticks.
-8. Report the saved path as a clickable markdown file link when possible, and state whether the result was new, a small revision, or a large revision.
+When inspecting tag vocabulary or searching notes with `rg`:
+
+- Use `--no-filename` rather than `-h` (`rg -h` means help).
+- Pass multiple patterns with `-e`, for example:
+  `rg --no-filename -e '^tags:' -e '^  - ' <ai_note_folder> -g '*.md'`.
+- Prefer directory + `-g '*.md'` over shell globs to avoid Windows/Git Bash/PowerShell
+  expansion differences.
 
 ## Sandbox And Permissions
 
-If the vault is outside the writable sandbox, request approval for the needed write operation. Do not save to a fallback path unless the user explicitly asks for it.
-
-If a required read or write is blocked, state exactly which rule could not be executed and continue only if a compliant result is still possible.
+If the vault is outside the writable sandbox, request approval for the needed write operation.
+If a required read or write is blocked, state exactly which rule could not be executed and
+continue only if a compliant result is still possible.
 
 ## Quality Bar
 
-- Prefer faithful execution of the canonical spec over a short summary.
+- Prefer faithful execution of the core specification over a short summary.
 - Keep the saved note useful as an Obsidian knowledge note, not a raw transcript.
-- Do not quote private notes or hidden conversation content without the required permission checks.
-- Do not modify the canonical Claude command while saving a chat.
+- Do not quote private notes or hidden conversation content without the required permission
+  checks.
+- Do not modify the core specification while saving a chat.

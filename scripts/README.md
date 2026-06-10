@@ -1,10 +1,14 @@
 # Scripts
 
-This directory contains optional utility scripts that are useful outside the core `/save-chat` workflow.
+This directory holds the library's workflow authorities (specification documents that thin platform entrypoints read at runtime) and optional utility scripts. Nothing here is deployed to machines; everything is referenced in place via `library_path`.
 
 Each script should have a short entry here. Simple scripts can be fully documented in one or two lines in this index; scripts with non-trivial usage should have a dedicated help document.
 
 ## Available Scripts
+
+### Workflow Authorities
+
+- [`save-chat-core.md`](save-chat-core.md): the shared save-chat specification (note format, slug/tag rules, revision rules, wikilink scope, platform binding contract). The Claude Code command, Codex skill, and Copilot prompt are thin skins that read this file at runtime.
 
 ### Config Workflow And Helpers
 

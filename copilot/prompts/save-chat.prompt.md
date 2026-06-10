@@ -1,33 +1,26 @@
 name: "save-chat"
-description: "Use when: save the current chat into the user's Obsidian vault as a markdown note, following the Claude save-chat workflow with optional slug support."
+description: "Use when: save the current chat into the user's Obsidian vault as a markdown note, following the shared save-chat core specification with optional slug support."
 argument-hint: "[optional-slug]"
 agent: "agent"
-Save the current conversation as a markdown note by following the existing Claude save-chat workflow as closely as possible.
+Save the current conversation as a markdown note. This prompt is a thin Copilot entrypoint for the shared save-chat core; do not duplicate the note format or workflow rules here.
 
-Runtime requirements:
-- Treat ~/.claude/commands/save-chat.md as the source specification. If it is missing, resolve library_path from the host-info section of ~/.claude/CLAUDE.md (or, on un-migrated machines, ~/.claude/CLAUDE.local.md) and read <library_path>/dotclaude/commands/save-chat.md instead.
-- Read ~/.claude/CLAUDE.md to resolve vault_path, library_path, and machine-local vault settings from its host-info ("ホスト情報") section. These values are machine-local and have no library fallback (the master carries only placeholders); on machines not yet migrated they may still live in ~/.claude/CLAUDE.local.md. If they are missing everywhere, ask the user instead of guessing.
-- Read ~/.claude/CLAUDE.md for vault scope, wikilink, and privacy rules (its shared-rules section). If the file is missing, fall back to <library_path>/dotclaude/CLAUDE.md for those rules.
-- Use the current year to target <vault_path>/claudeYYYY/.
-- Accept an optional slug argument. If no slug is provided, derive a 3-6 word lowercase kebab-case slug from the conversation topic.
+Source of truth (read and follow, in order):
+1. <library_path>/scripts/save-chat-core.md — the shared save-chat specification (workflow authority).
+2. ~/.claude/CLAUDE.md — the host-info ("ホスト情報") section (vault_path, library_path, ai_note_folder, public_note_folders, private_note_folders) and the Obsidian vault management rules (vault access, wikilink, privacy).
 
-Copilot-specific frontmatter (override the canonical defaults):
+Resolve <library_path>: use the current workspace if it contains scripts/save-chat-core.md; otherwise read library_path from the host-info section of ~/.claude/CLAUDE.md (or, on machines not yet migrated, from ~/.claude/CLAUDE.local.md). If neither defines it, ask the user. Do not invent paths. If the core file cannot be read, stop and report; do not save to a fallback path.
+
+Copilot binding (implements the core's platform binding contract):
 - source: github-copilot
-- session_id: use your own Copilot session identifier if one is available (e.g. the Copilot chat session UUID); otherwise omit it. Do NOT use the canonical ~/.claude/projects/<encoded>/*.jsonl method — those are Claude Code's sessions and are unrelated to this Copilot chat.
-- model / workspace / machine: follow the canonical rules (current Copilot model if known; workspace = cwd; machine = `hostname -s`).
+- session_id: Copilot's own chat session identifier — the debug-logs folder UUID under <VS Code User dir>/workspaceStorage/<workspace-hash>/GitHub.copilot-chat/debug-logs/<uuid>/ when identifiable; otherwise omit. Never use Claude Code's ~/.claude/projects/*.jsonl method.
+- model: the current Copilot model ID if known (the models.json in the same debug-logs session folder is a valid source). If reasoning effort is also reliably available, append it in parentheses per the core format: model: <ID> (<effort>); otherwise record the ID alone. If the model cannot be determined, omit the field. Never guess.
+- workspace: current working directory (absolute path); machine: short hostname (hostname -s).
 
-Execution steps:
-1. Read the source specification (~/.claude/commands/save-chat.md, or <library_path>/dotclaude/commands/save-chat.md if the former is missing) and follow its rules unless a required tool is unavailable.
-2. Determine the slug.
-3. Search for an existing note matching *-{slug}.md in the current year folder, then the previous year folder.
-4. If a matching note exists, update it in revision mode.
-5. If no matching note exists, create a new note in the current year folder.
-6. Reuse existing tag vocabulary where practical by inspecting notes in the target year.
-7. Preserve the workflow's frontmatter, title, revision history, and revision-size rules, applying the Copilot-specific frontmatter overrides above.
-8. Obey the private/public note access and wikilink rules from the Claude memory files.
-9. At the end, report the saved path and whether the action was new, small revision, or large revision.
+Execution: determine the slug (argument or derived per the core rules), then follow the core's workflow — related-note search, existing-note lookup (current then previous year), new-note or revision mode, tag vocabulary reuse, wikilink scope rules, frontmatter and revision-history formats — applying the Copilot binding above.
+
+Tool conventions: for related-note search and tag-vocabulary extraction, `rg` may be absent in the Copilot execution environment — check availability first and fall back to `find` + `grep` (e.g. `grep -h -e '^tags:' -e '^  - ' <ai_note_folder>/*.md`); do not fail or skip the search just because `rg` is missing. If `rg` is available, use `--no-filename` (not `-h`, which means help) and pass multiple patterns with `-e`.
 
 Behavior constraints:
-- Prefer a faithful implementation over a simplified summary.
+- Prefer faithful execution of the core specification over a simplified summary.
 - If a specific rule cannot be executed in this environment, state exactly what was skipped and continue with the closest compliant result.
-- Do not invent vault paths or metadata; read them from the configured Claude files.
+- At the end, report the saved path and whether the action was new, a small revision, or a large revision.

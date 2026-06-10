@@ -30,17 +30,18 @@ This library publishes personal configuration and operations helpers as-is, with
 ├── dotclaude/                   ← 各端末の ~/.claude/ へ deploy する Claude Code 原本
 │   ├── CLAUDE.md                ← 共有ルール + 端末設定 + メモリを統合した管理ブロック構造 (1 ファイル)
 │   └── commands/                ← ~/.claude/commands/ へ deploy する slash commands
-│       ├── save-chat.md         ← 会話を Obsidian vault に保存
+│       ├── save-chat.md         ← save-chat core への薄い入口 (Claude Code 皮)
 │       └── config-manager.md    ← config snapshot/update workflow への薄い入口
 ├── .gitignore                   ← git 除外パターン
 ├── dotcodex/                    ← 各端末の ~/.codex/ へ deploy する Codex 原本
 │   ├── AGENTS.md                ← Codex global rules adapter
-│   ├── skills/save-chat/SKILL.md ← Codex 版 save-chat (参照型)
+│   ├── skills/save-chat/SKILL.md ← save-chat core への薄い入口 (Codex 皮)
 │   └── skills/config-manager/SKILL.md ← Codex 版 config-manager (薄い入口)
 ├── copilot/                     ← Copilot 版 prompt の配布用原本 (任意・VS Code + Copilot 端末のみ)
-│   └── prompts/save-chat.prompt.md ← Copilot 版 save-chat (参照型)
-├── scripts/                     ← 補助スクリプト集 (任意。README は目次、必要に応じて個別 md)
+│   └── prompts/save-chat.prompt.md ← save-chat core への薄い入口 (Copilot 皮)
+├── scripts/                     ← workflow の正本 + 補助スクリプト集 (非配布。README は目次)
 │   ├── README.md                ← scripts の目次
+│   ├── save-chat-core.md        ← save-chat の共通仕様 (workflow authority、3 皮が実行時に読む)
 │   ├── config-update.md         ← config snapshot/update workflow の正
 │   ├── config-apply-recipes.md  ← snapshot-driven config recipes
 │   ├── config-apply-patches.md  ← optional local patch recipes の入口
@@ -73,10 +74,11 @@ Claude Code を使う端末では Claude Code に依頼する:
 
 > **既存端末の更新時**: load は `CLAUDE.md` の管理ブロック内にある共有ルール (S) だけを更新し、「ホスト情報」セクション (端末設定 L) と管理ブロック外のメモリ領域 (M) は触らない。S の構造が変わっても L/M は既存値を保持する。Claude は自動で上書きせず、merge 方針をユーザーに確認する。
 
-Codex を使う端末でも、save-chat の原典は Claude Code 版の設定ファイルなので、
+Codex を使う端末でも、save-chat の設定原典は `~/.claude/CLAUDE.md` なので、
 最低限 `~/.claude/CLAUDE.md`(「ホスト情報」セクションに `library_path` / `vault_path` 等を
-記入)を配置する必要がある。Claude Code 本体を使わない端末でも、この `~/.claude/`
-ファイル群は Codex / Copilot が参照する設定原典として必要。
+記入)を配置する必要がある。Claude Code 本体を使わない端末でも、このファイルは
+Codex / Copilot が参照する設定原典として必要 (save-chat の仕様本体は library 側の
+`scripts/save-chat-core.md` を読む)。
 
 そのうえで `dotcodex/` を `~/.codex/` へ展開する。既存の
 `~/.codex/AGENTS.md` がある場合は上書きせず、`dotcodex/AGENTS.md` の
@@ -84,7 +86,7 @@ Codex を使う端末でも、save-chat の原典は Claude Code 版の設定フ
 
 ## `/save-chat` — 会話を Obsidian vault に保存
 
-現在の会話を markdown ノートとして Obsidian vault に書き出す slash command。
+現在の会話を markdown ノートとして Obsidian vault に書き出す。
 
 - **保存先**: vault 内の **AI ノートフォルダ** (`claude{YYYY}/` 等)
 - **構造**: frontmatter (tags / model / machine / session_id 等) + 本体 + 改訂履歴
@@ -97,7 +99,22 @@ Codex を使う端末でも、save-chat の原典は Claude Code 版の設定フ
 save-chatしてください        ← Codex 版 skill の自然文トリガー
 ```
 
-詳細仕様は [`dotclaude/commands/save-chat.md`](dotclaude/commands/save-chat.md) を参照。
+### save-chat の構成 — core + 薄い皮 3 枚
+
+save-chat は **共通仕様 (core) 1 つ + プラットフォーム別の薄い入口 (皮) 3 枚**で構成する
+(config-manager と同じ形態)。仕様の正本は core だけが持ち、各皮は「起動形態 + core の解決 +
+platform 固有のメタデータ取得 (binding)」のみを持つ:
+
+| | ファイル | 役割 |
+|---|---|---|
+| **core (正)** | [`scripts/save-chat-core.md`](scripts/save-chat-core.md) | ノートフォーマット・slug/タグ規則・改訂規則・wikilink 規則の共通仕様。**非配布** (library 単一コピー、3 皮が実行時に読む) |
+| **Claude Code 皮** | [`dotclaude/commands/save-chat.md`](dotclaude/commands/save-chat.md) | slash command。`~/.claude/commands/` へ load で配布 |
+| **Codex 皮** | [`dotcodex/skills/save-chat/SKILL.md`](dotcodex/skills/save-chat/SKILL.md) | skill (自然文トリガー)。`~/.codex/skills/` へ配布 |
+| **Copilot 皮** | [`copilot/prompts/save-chat.prompt.md`](copilot/prompts/save-chat.prompt.md) | user prompt。VS Code User prompts へ配布 |
+
+各皮は core を `<library_path>/scripts/save-chat-core.md` から読む (`library_path` は
+`~/.claude/CLAUDE.md` の「ホスト情報」セクションで解決)。frontmatter の `source` / `model` /
+`session_id` は皮ごとの binding で取得し、安定取得できなければ省略する。
 
 ## `/config-manager` — 端末設定の review / 比較 / 安全な apply
 
@@ -133,16 +150,16 @@ snapshot には editor settings のように低リスクで宣言的に再現で
 
 ## Codex 版 global rules / skills (任意)
 
-Codex でも Claude Code 側のルール、save-chat workflow、config 管理 workflow を参照できる。Codex 版 skill は原則**参照型** — 実行時に library 側または Claude Code 版の原典を仕様として読むので、原典の更新に追従しやすい (フォークではない)。
+Codex でも Claude Code 側のルール、save-chat workflow、config 管理 workflow を参照できる。Codex 版 skill は**薄い皮** — 実行時に library 側の正本 (save-chat は `scripts/save-chat-core.md`、config-manager は `scripts/config-update.md`) を読むので、正本の更新に自動追従する (フォークではない)。
 
-> **前提: `~/.claude/CLAUDE.md` が必須。** spec (`dotclaude/commands/save-chat.md`) は `~/.claude/` に無ければ library 側 (`<library_path>/dotclaude/commands/`) へフォールバックする。ただし `CLAUDE.md` の「ホスト情報」セクション (`vault_path` / `library_path` 等) は端末ローカルで library に複製が無く、これが無いと保存先も library の位置も解決できない。(移行前の端末で旧 `~/.claude/CLAUDE.local.md` が残っていれば、そこからの解決もフォールバックとして可。)
+> **前提: `~/.claude/CLAUDE.md` が必須。** `CLAUDE.md` の「ホスト情報」セクション (`vault_path` / `library_path` 等) は端末ローカルで library に複製が無く、これが無いと保存先も library の位置 (= core の位置) も解決できない。(移行前の端末で旧 `~/.claude/CLAUDE.local.md` が残っていれば、そこからの解決もフォールバックとして可。)
 
-> **Codex 単体利用時の注意:** Claude Code binary が未導入でもよいが、`~/.claude/CLAUDE.md`(「ホスト情報」セクション記入済み)は必要。可能なら `~/.claude/commands/save-chat.md` も通常の Claude Code セットアップと同じ形で配置する。これが無い場合、Codex skill は `CLAUDE.md` の `library_path` から library 側原本へフォールバックする。
+> **Codex 単体利用時の注意:** Claude Code binary が未導入でもよいが、`~/.claude/CLAUDE.md`(「ホスト情報」セクション記入済み)は必要。save-chat の仕様本体は library 側の `scripts/save-chat-core.md` を直接読むため、`~/.claude/commands/` の配置は不要。
 
 - **global rules**: `dotcodex/AGENTS.md` を `~/.codex/AGENTS.md` へ展開する。既存の `~/.codex/AGENTS.md` があれば上書きせず、マーカー付き adapter block を diff/merge する。
 - **save-chat 呼び出し**: slash command ではなく skill の自然文トリガー。例: `save-chatしてください` / `/save-chat` / `save-chat <slug>`
 - **config-manager 呼び出し**: config snapshot / drift / apply review 用の薄い入口。例: `config-managerで最近の設定差分を見て` / `<machine> の設定をこの端末に取り込みたい`
-- **frontmatter**: `source: codex` (`model` / `session_id` は安定取得できる場合のみ記録)
+- **frontmatter**: `source: codex`。`model` / `session_id` は Codex 自身の local transcript (`$CODEX_HOME/session_index.jsonl` + `sessions/**/*.jsonl` の `turn_context`) から取得し、reasoning effort が同時に取れる場合は `model: gpt-5.5 (medium)` 形式で付記。読めなければ省略 (詳細は SKILL.md の binding)
 - **sandbox**: vault が Codex の writable root 外なら保存時に承認を求める (vault 全体を writable root にはしない。必要なら `claude{YYYY}` だけ許可する程度に留める)
 
 ### 展開 (Codex)
@@ -163,12 +180,12 @@ Codex でも Claude Code 側のルール、save-chat workflow、config 管理 wo
 
 ## Copilot 版 save-chat (任意)
 
-VS Code + GitHub Copilot でも save-chat を使える。Copilot 版は**参照型** — 実行時に Claude Code 版の原典 (`~/.claude/commands/save-chat.md`) を仕様として読む (フォークではない)。
+VS Code + GitHub Copilot でも save-chat を使える。Copilot 版は**薄い皮** — 実行時に library 側の正本 (`scripts/save-chat-core.md`) を仕様として読む (フォークではない)。
 
-> **前提: `~/.claude/CLAUDE.md` が必須。** spec (`dotclaude/commands/save-chat.md`) は `~/.claude/` に無ければ library 側 (`<library_path>/dotclaude/commands/`) へフォールバックする (Codex 版と同等)。ただし `CLAUDE.md` の「ホスト情報」セクション (`vault_path` / `library_path` 等) は端末ローカルで library に複製が無く、これが無いと保存先も library の位置も解決できない。(移行前の端末で旧 `~/.claude/CLAUDE.local.md` が残っていれば、そこからの解決もフォールバックとして可。)
+> **前提: `~/.claude/CLAUDE.md` が必須。** `CLAUDE.md` の「ホスト情報」セクション (`vault_path` / `library_path` 等) は端末ローカルで library に複製が無く、これが無いと保存先も library の位置 (= core の位置) も解決できない。(移行前の端末で旧 `~/.claude/CLAUDE.local.md` が残っていれば、そこからの解決もフォールバックとして可。)
 
 - **呼び出し**: Copilot Chat の `/save-chat` (`/save-chat <slug>` で slug 指定)
-- **frontmatter**: `source: github-copilot`
+- **frontmatter**: `source: github-copilot`。`session_id` は Copilot 自身の debug-logs セッション UUID、`model` は同セッションフォルダの `models.json` 等から既知の場合のみ。読めなければ省略
 
 ### 展開 (Copilot)
 
@@ -212,10 +229,11 @@ Claude Code の `~/.claude/` への `load`(配布)手順の詳細は
 
 ## 補助スクリプト — `scripts/`
 
-`scripts/` は `/save-chat` 本体とは独立した補助ツール置き場。Claude Code / Codex / VS Code / Cursor 周辺で見つかった再利用可能な修正・診断スクリプトをここに置く。[`scripts/README.md`](scripts/README.md) は目次とし、軽いスクリプトは 1-2 行の説明だけでよい。使い方・注意点・復旧手順が必要なものは、スクリプト専用の `.md` に詳しく書く。
+`scripts/` は **workflow 正本** (save-chat core、config workflow) と**補助ツール**の置き場。非配布 (library 単一コピー) で、各端末の皮・helper が実行時に参照する。Claude Code / Codex / VS Code / Cursor 周辺で見つかった再利用可能な修正・診断スクリプトもここに置く。[`scripts/README.md`](scripts/README.md) は目次とし、軽いスクリプトは 1-2 行の説明だけでよい。使い方・注意点・復旧手順が必要なものは、スクリプト専用の `.md` に詳しく書く。
 
 主な分類:
 
+- Workflow authorities: save-chat の共通仕様 [`scripts/save-chat-core.md`](scripts/save-chat-core.md) と config workflow の正 [`scripts/config-update.md`](scripts/config-update.md)。各皮 (thin entrypoint) が実行時に読む。
 - Config workflow and helpers: config snapshot / compare / apply protocol と、JSONC・log 操作用の helper。詳細は [`scripts/README.md`](scripts/README.md) と [`scripts/config-update.md`](scripts/config-update.md)。
 - Patch and recovery utilities: VS Code / Cursor / Codex 周辺の optional local patch・復旧 script。詳細は [`scripts/README.md`](scripts/README.md) と [`scripts/config-apply-patches.md`](scripts/config-apply-patches.md)。
 

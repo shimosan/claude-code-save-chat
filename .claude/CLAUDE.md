@@ -11,11 +11,16 @@
   - `dotcodex/AGENTS.md` → `~/.codex/AGENTS.md`(Claude Code 側ルール参照 adapter)
   - `dotcodex/skills/*/SKILL.md` → `~/.codex/skills/*/SKILL.md`
 - `copilot/` — VS Code + GitHub Copilot 向け prompt 原本。
+- `scripts/` — workflow の正本 (`save-chat-core.md`, `config-update.md` 等) と補助スクリプト。
+  **非配布** (library 単一コピー)。各端末の薄い皮が `library_path` 経由で実行時に読む。
 - `local/`, `notes/`, `scratch/` — gitignored なローカル領域。
 
 ## 編集の正
 - 共有ルール・コマンド・skill の編集の正は library 側(`dotclaude/`, `dotcodex/`, `copilot/`)。
   端末側(`~/.claude/`, `~/.codex/`, VS Code User prompts 等)を直接いじったら library へ戻す。
+- save-chat / config-manager は「core (正本、`scripts/`) + 薄い皮 (各 deploy フォルダ)」の 2 層。
+  仕様・workflow を直すのは core、起動形態や platform binding (source / model / session_id の
+  取得法) を直すのは皮。皮に仕様を複製しない。
 - load の手順と diff/merge ポリシーは `dotclaude/CLAUDE.md` の「配布 (load)」を参照(save は廃止 — 端末→library の書き戻しはしない)。
 - `dotclaude/CLAUDE.md` は subfolder ゆえ自動ロードされない。これは意図的 —
   編集対象(同期マスター)が自身を制御しないようにするため。
