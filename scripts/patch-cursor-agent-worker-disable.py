@@ -80,24 +80,49 @@ def run_ps() -> list[ProcessInfo] | None:
     return processes
 
 
+SELF_SCRIPT_MARKER = "patch-cursor-agent-worker-disable"
+
+
 def is_cursor_process(process: ProcessInfo) -> bool:
     text = process.text
-    return (
-        "Cursor.app/Contents/MacOS/Cursor" in text
-        or "Cursor Helper" in text
-        or "cursor-agent-worker" in text
-    )
+    if "Cursor.app/Contents/MacOS/Cursor" in text or "Cursor Helper" in text:
+        return True
+    # This script's own file name contains "cursor-agent-worker", so the shell
+    # that launched it (e.g. `zsh -c python3 .../patch-cursor-agent-worker-disable.py`)
+    # would match the heuristic below. Skip lines that mention the patcher itself.
+    if SELF_SCRIPT_MARKER in text:
+        return False
+    return "cursor-agent-worker" in text
 
 
-def cursor_processes(processes: list[ProcessInfo]) -> list[ProcessInfo]:
-    current_pid = os.getpid()
-    return [process for process in processes if process.pid != current_pid and is_cursor_process(process)]
+def self_ancestor_pids(processes: list[ProcessInfo], current_pid: int) -> set[int]:
+    by_pid = {process.pid: process for process in processes}
+    pids: set[int] = set()
+    pid = current_pid
+    while pid and pid not in pids:
+        pids.add(pid)
+        process = by_pid.get(pid)
+        if process is None:
+            break
+        pid = process.ppid
+    return pids
 
 
-def cursor_ancestor(processes: list[ProcessInfo]) -> ProcessInfo | None:
+def cursor_processes(processes: list[ProcessInfo], current_pid: int | None = None) -> list[ProcessInfo]:
+    if current_pid is None:
+        current_pid = os.getpid()
+    # The launch chain (this python, its shell, ...) is judged by cursor_ancestor
+    # instead; counting it here would double-report a Cursor-hosted terminal.
+    ancestors = self_ancestor_pids(processes, current_pid)
+    return [process for process in processes if process.pid not in ancestors and is_cursor_process(process)]
+
+
+def cursor_ancestor(processes: list[ProcessInfo], current_pid: int | None = None) -> ProcessInfo | None:
+    if current_pid is None:
+        current_pid = os.getpid()
     by_pid = {process.pid: process for process in processes}
     seen: set[int] = set()
-    pid = os.getpid()
+    pid = current_pid
     while pid and pid not in seen:
         seen.add(pid)
         process = by_pid.get(pid)
@@ -374,7 +399,64 @@ def assert_equal(actual: Any, expected: Any, label: str) -> None:
         raise AssertionError(f"{label}: expected {expected!r}, got {actual!r}")
 
 
+def self_test_process_detection() -> None:
+    cursor_app = ProcessInfo(
+        pid=100, ppid=1,
+        comm="/Applications/Cursor.app/Contents/MacOS/Cursor",
+        args="/Applications/Cursor.app/Contents/MacOS/Cursor",
+    )
+    helper = ProcessInfo(
+        pid=101, ppid=100,
+        comm="/Applications/Cursor.app/Contents/Frameworks/Cursor Helper (Renderer).app/Contents/MacOS/Cursor Helper (Renderer)",
+        args="/Applications/Cursor.app/Contents/Frameworks/Cursor Helper (Renderer).app/Contents/MacOS/Cursor Helper (Renderer) --type=renderer",
+    )
+    worker = ProcessInfo(
+        pid=102, ppid=100,
+        comm="node",
+        args="node /path/to/extensions/anysphere.cursor-agent-worker/dist/worker.js",
+    )
+    launch_shell = ProcessInfo(
+        pid=200, ppid=1,
+        comm="zsh",
+        args="zsh -c python3 scripts/patch-cursor-agent-worker-disable.py --status",
+    )
+    launch_python = ProcessInfo(
+        pid=201, ppid=200,
+        comm="python3",
+        args="python3 scripts/patch-cursor-agent-worker-disable.py --status",
+    )
+
+    assert_equal(is_cursor_process(cursor_app), True, "detect Cursor.app binary")
+    assert_equal(is_cursor_process(helper), True, "detect Cursor Helper")
+    assert_equal(is_cursor_process(worker), True, "detect cursor-agent-worker extension")
+    assert_equal(is_cursor_process(launch_shell), False, "ignore shell running this patcher")
+    assert_equal(is_cursor_process(launch_python), False, "ignore this patcher itself")
+
+    quiet = [launch_shell, launch_python]
+    assert_equal(cursor_processes(quiet, current_pid=201), [], "no Cursor: nothing running")
+    assert_equal(cursor_ancestor(quiet, current_pid=201), None, "no Cursor: no ancestor")
+
+    busy = [cursor_app, helper, worker, launch_shell, launch_python]
+    assert_equal(cursor_processes(busy, current_pid=201), [cursor_app, helper, worker], "Cursor running detected")
+    assert_equal(cursor_ancestor(busy, current_pid=201), None, "external terminal has no Cursor ancestor")
+
+    inside_shell = ProcessInfo(
+        pid=300, ppid=100,
+        comm="zsh",
+        args="zsh -c python3 scripts/patch-cursor-agent-worker-disable.py --status",
+    )
+    inside_python = ProcessInfo(
+        pid=301, ppid=300,
+        comm="python3",
+        args="python3 scripts/patch-cursor-agent-worker-disable.py --status",
+    )
+    inside = [cursor_app, helper, inside_shell, inside_python]
+    assert_equal(cursor_ancestor(inside, current_pid=301), cursor_app, "Cursor terminal detected via ancestor")
+    assert_equal(cursor_processes(inside, current_pid=301), [helper], "ancestor chain excluded, siblings kept")
+
+
 def self_test() -> int:
+    self_test_process_detection()
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
 
