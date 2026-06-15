@@ -48,9 +48,14 @@ slug の扱い・実行手順・ノート構造・テンプレート・改訂規
 
 ## tool 流儀
 
-- タグ語彙抽出: `Grep` tool (`output_mode: "content"`) で `tags:` 行と直後のタグリスト行を
-  抽出する。Bash + `rg` には降りない
-- related-note search・既存ファイル探索: `Glob` / `Grep` tool を使う
+- タグ語彙抽出・既存ノート探索: 利用可能な手段で既存ノートを読み、`tags:` 行と直後の
+  タグリスト行を拾う。優先順:
+  - ① `Grep` / `Glob` tool (タグ抽出は `Grep` `output_mode: "content"`)
+  - ② 無ければ Bash の `grep` / `ls`
+  - ③ それも無ければ `Read` 等、その harness で使える読み取り手段
+  - `rg` は使わない (plain `grep`)。②③ を採った場合は完了報告に明記
+  - ツールが無いことを理由にこの抽出を黙って省略しない (本当に不可能なときのみ、
+    その旨を報告して縮退する)
 - ノートの書き出し・上書き: `Write` tool
 
 ## 補足

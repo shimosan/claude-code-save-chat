@@ -72,6 +72,10 @@ When inspecting tag vocabulary or searching notes with `rg`:
   `rg --no-filename -e '^tags:' -e '^  - ' <ai_note_folder> -g '*.md'`.
 - Prefer directory + `-g '*.md'` over shell globs to avoid Windows/Git Bash/PowerShell
   expansion differences.
+- `rg` may be absent in the sandbox — check availability first and fall back to
+  `find` + `grep` (e.g. `grep -h -e '^tags:' -e '^  - ' <ai_note_folder>/*.md`).
+  Do not fail or skip the search just because `rg` is missing; note the substitution
+  in the completion report.
 
 ## Sandbox And Permissions
 
