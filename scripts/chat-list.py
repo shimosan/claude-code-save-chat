@@ -517,7 +517,7 @@ def main(argv=None):
     p.add_argument("--grep", metavar="TEXT", help="本文 (会話の中身) を全文検索して絞り、一致行も表示 (本文を読むので遅め)")
     p.add_argument("--include-subagents", action="store_true", help="codex の subagent スレッドも含める")
     p.add_argument("--include-archived", action="store_true", help="archived も含める")
-    p.add_argument("--limit", type=int, help="末尾 N 件に絞る")
+    p.add_argument("--limit", type=int, help="会話一覧を末尾 N 件に絞る (--workspaces には効かない)")
     p.add_argument("--sort", choices=["last", "count", "name", "first"], default="last",
                    help="--workspaces の並び: last=最終活動↓(既定) / count=合計↓ / name=path↑ / first=初回↑")
     p.add_argument("--format", choices=["table", "json"], default="table")
