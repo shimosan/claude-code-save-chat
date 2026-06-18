@@ -28,7 +28,9 @@ claude-code と codex の会話履歴を横断で**列挙・閲覧するだけ**
 
 ## 起動
 
-`python3 <library_path>/scripts/chat-list.py [options]` を Bash で実行する。
+`python3 <library_path>/scripts/chat-list.py [options]` を Bash で実行する
+(PATH に通してあれば `chat-list [options]` でよい。Windows では `python3` の代わりに `python` / `py`、
+または PATH 上の `chat-list`)。
 **出力 (一覧そのもの) を提示する — 散文サマリーに要約し直さない。** 各行 (`#`・時刻・由来・ID・サイズ・タイトル、
 `--grep`/`--head`/`--tail` の一致・プレビュー行) はユーザーが次に叩く手がかり (`--dump <id>`・WS 選択など)
 なので、**番号と ID を残したまま見せる**。先頭に 1〜2 行の要約コメントを添えるのは可。件数が多くても行を

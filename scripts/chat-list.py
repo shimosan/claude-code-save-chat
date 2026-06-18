@@ -20,6 +20,7 @@ import datetime
 import io
 import json
 import os
+import pathlib
 import shutil
 import sqlite3
 import subprocess
@@ -31,8 +32,32 @@ CLAUDE_PROJECTS = os.path.join(HOME, ".claude", "projects")
 CODEX_DB = os.path.join(HOME, ".codex", "sqlite", "state_5.sqlite")
 
 UTC = datetime.timezone.utc
-# 表示は端末のローカルタイムゾーン (保存値は UTC)。JST 等の決め打ちはしない。
-TZLABEL = datetime.datetime.now().astimezone().strftime("%Z") or "local"
+
+
+# オフセット(分) -> 短い略称。Windows の %Z は冗長 ('東京 (標準時)') なので、
+# 略称が取れない時のフォールバック表示に使う。未知のオフセットは 'UTC±N' にする。
+_TZ_ABBR = {9 * 60: "JST", 0: "UTC", -5 * 60: "EST", -8 * 60: "PST"}
+
+
+def _tzlabel():
+    """表示は端末のローカルタイムゾーン (保存値は UTC)。決め打ちはしない。
+    %Z は mac/linux では 'JST' 等の短い略称だが Windows では '東京 (標準時)' のように
+    冗長・非 ASCII になる。短い ASCII 略称はそのまま使い、それ以外はオフセットから
+    略称 (例 +9->JST) を引き、無ければ 'UTC+9' 形式にする。"""
+    now = datetime.datetime.now().astimezone()
+    z = now.strftime("%Z") or ""
+    if z.isascii() and 0 < len(z) <= 5 and " " not in z:
+        return z
+    off = now.utcoffset() or datetime.timedelta(0)
+    mins = int(off.total_seconds() // 60)
+    if mins in _TZ_ABBR:
+        return _TZ_ABBR[mins]
+    sign = "+" if mins >= 0 else "-"
+    h, m = divmod(abs(mins), 60)
+    return f"UTC{sign}{h}" + (f":{m:02d}" if m else "")
+
+
+TZLABEL = _tzlabel()
 
 
 # ---------- 時刻 ----------
@@ -53,6 +78,11 @@ def to_dt(start):
 def loc_str(dt):
     """ローカルタイムゾーンに変換して整形 (端末依存)."""
     return dt.astimezone().strftime("%Y-%m-%d %H:%M") if dt else "?"
+
+
+def _json_default(o):
+    """json.dumps の default。datetime は ISO 文字列に。"""
+    return o.isoformat() if isinstance(o, datetime.datetime) else str(o)
 
 
 # ---------- 表示幅 (全角を 2 と数えて桁を揃える) ----------
@@ -88,6 +118,45 @@ def norm(s):
 
 def base(s):
     return os.path.basename(norm(s).rstrip("/")) if s else s
+
+
+def strip_ext_prefix(s):
+    r"""Windows の拡張長パスプレフィックス \\?\ を除去する。
+    \\?\UNC\host\share -> \\host\share、\\?\C:\x -> C:\x。
+    プレフィックスを持たない文字列 (POSIX パス全般) はそのまま返す = no-op。"""
+    if not s:
+        return s
+    if s.startswith("\\\\?\\UNC\\"):
+        return "\\\\" + s[len("\\\\?\\UNC\\"):]
+    if s.startswith("\\\\?\\"):
+        return s[len("\\\\?\\"):]
+    return s
+
+
+def lower_drive(s):
+    r"""Windows のドライブ文字 (先頭 'X:') を小文字に統一する。表示揺れ防止
+    (claude は 'e:\…'、別セッションは 'E:\…' のように大小がまちまち)。
+    'X:' で始まらない文字列 (POSIX パス全般) はそのまま返す = no-op。"""
+    if s and len(s) >= 2 and s[1] == ":" and s[0].isascii() and s[0].isalpha():
+        return s[0].lower() + s[1:]
+    return s
+
+
+def ws_path(cwd):
+    """表示用の実パス: NFC 正規化 + 拡張長プレフィックス除去 + ドライブ文字小文字化。
+    POSIX では strip も lower_drive も恒等なので norm(cwd) と同一。"""
+    return lower_drive(strip_ext_prefix(norm(cwd))) if cwd else cwd
+
+
+def ws_key(cwd):
+    r"""WS グルーピング/重複判定キー。Windows ではプレフィックス除去 + case 畳み込み
+    (os.path.normcase) で codex(\\?\E:\…) と claude(e:\…) を同一視する。
+    POSIX では normcase も strip も恒等なので norm(cwd) に等しい (現挙動を変えない)."""
+    return norm(os.path.normcase(strip_ext_prefix(cwd))) if cwd else "(不明)"
+
+
+# 表示の '~' 置換用 (ws_path と同じ正規化を施した HOME)。HOME 自体は実パス生成に使うので変えない。
+_HOME_DISP = ws_path(HOME)
 
 
 def make_cwd_pred(target, mode):
@@ -217,7 +286,8 @@ def _codex_conn():
     if not os.path.exists(CODEX_DB):
         return None
     try:
-        return sqlite3.connect(f"file:{CODEX_DB}?mode=ro", uri=True, timeout=5)
+        # pathlib.as_uri() で OS 非依存の file:// URI を作る (Windows のバックスラッシュ/ドライブ対策)
+        return sqlite3.connect(pathlib.Path(CODEX_DB).as_uri() + "?mode=ro", uri=True, timeout=5)
     except sqlite3.OperationalError:
         return None
 
@@ -399,7 +469,7 @@ def _list_sort_label(how, reverse):
 
 # ---------- 出力: 一覧 ----------
 def _ws_key(r):
-    return norm(r["cwd"]) if r["cwd"] else "(不明)"
+    return ws_key(r["cwd"])
 
 
 def cmd_list(args, pred):
@@ -418,16 +488,16 @@ def cmd_list(args, pred):
             letters[k] = ws_letter(len(order))
             order.append((k, r["cwd"]))
     if args.format == "json":
-        print(json.dumps([{**r, "ws": letters[_ws_key(r)],
-                           "start": r["start"].isoformat() if r["start"] else None} for r in recs],
-                         ensure_ascii=False, indent=1))
+        # start / updated は datetime。default で ISO 文字列化する (片方漏れると TypeError)。
+        print(json.dumps([{**r, "ws": letters[_ws_key(r)]} for r in recs],
+                         ensure_ascii=False, indent=1, default=_json_default))
         return
     cc = sum(1 for r in recs if r["harness"] == "claude")
     cx = sum(1 for r in recs if r["harness"] == "codex")
     print("# chat-list  対象 WS:")
     if order:
         for k, cwd in order:
-            print(f"#   {letters[k]}  {(cwd or '(不明)').replace(HOME, '~')}  ({counts[k]}本)")
+            print(f"#   {letters[k]}  {(ws_path(cwd) or '(不明)').replace(_HOME_DISP, '~')}  ({counts[k]}本)")
     else:
         print("#   (該当なし)")
     print(f"# 計 {len(recs)} 本 (claude {cc} + codex {cx})  ソート: {_list_sort_label(args.sort, args.reverse)}")
@@ -466,14 +536,15 @@ def cmd_workspaces(args, pred=None):
         if key not in best or sz > best[key][0]:
             best[key] = (sz, r)
 
-    agg = {}  # norm(cwd) -> dict(cc, cx, cxa, first, last)
+    agg = {}  # ws_key(cwd) -> dict(cc, cx, cxa, first, last, disp)
     for r in (v[1] for v in best.values()):
         if not r["cwd"]:
             continue
-        k = norm(r["cwd"])
-        if pred is not None and not pred(k):
+        if pred is not None and not pred(r["cwd"]):
             continue
-        a = agg.setdefault(k, {"cc": 0, "cx": 0, "cxa": 0, "bytes": 0, "first": None, "last": None})
+        k = ws_key(r["cwd"])
+        a = agg.setdefault(k, {"cc": 0, "cx": 0, "cxa": 0, "bytes": 0, "first": None,
+                               "last": None, "disp": ws_path(r["cwd"])})
         a["cc" if r["harness"] == "claude" else ("cxa" if r["archived"] else "cx")] += 1
         a["bytes"] += max(r["bytes"], 0)  # WS の合計バイト数 (--sort size / サイズ列)
         if r["start"]:  # first = 初回活動 (最古の開始)
@@ -498,8 +569,10 @@ def cmd_workspaces(args, pred=None):
         keyf, desc = (lambda kv: kv[1]["first"] or _MIN_DT), True
     items.sort(key=keyf, reverse=desc ^ args.reverse)
     if args.format == "json":
-        print(json.dumps([{"i": i, "cwd": k, **{kk: (vv.isoformat() if isinstance(vv, datetime.datetime) else vv)
-                                                for kk, vv in v.items()}} for i, (k, v) in enumerate(items, 1)],
+        print(json.dumps([{"i": i, "cwd": v["disp"],
+                           **{kk: (vv.isoformat() if isinstance(vv, datetime.datetime) else vv)
+                              for kk, vv in v.items() if kk != "disp"}}
+                          for i, (k, v) in enumerate(items, 1)],
                          ensure_ascii=False, indent=1))
         return
     print(f"# chat-list --workspaces  ({len(items)} WS)   計=CC+CX(active)  CC=claude  CX=codex  "
@@ -510,10 +583,10 @@ def cmd_workspaces(args, pred=None):
         return rpad(c0, 3) + " " + rpad(c1, 4) + " " + rpad(c2, 4) + " " + rpad(c3, 4) + " " + rpad(c4, 4) + "  "
 
     print(cols("#", "計", "CC", "CX", "*") + rpad("サイズ", 6) + "  " + pad(f"期間({TZLABEL})", 24) + "WS")
-    for i, (cwd, a) in enumerate(items, 1):
+    for i, (k, a) in enumerate(items, 1):
         period = f"{loc_str(a['first'])[:10]}〜{loc_str(a['last'])[:10]}"
         print(cols(str(i), str(a["cc"] + a["cx"]), str(a["cc"]), str(a["cx"]), str(a["cxa"]))
-              + rpad(human_size(a["bytes"]), 6) + "  " + pad(period, 24) + cwd.replace(HOME, "~"))
+              + rpad(human_size(a["bytes"]), 6) + "  " + pad(period, 24) + a["disp"].replace(_HOME_DISP, "~"))
 
 
 # ---------- 出力: dump ----------
@@ -543,7 +616,7 @@ def cmd_dump(args):
     else:
         body = "\n\n".join(f"### {role}\n{t}" for role, t in messages_of(rec))
     header = (f"# {rec['title']}\n# id={rec['id']} {origin_label(rec)} 開始={loc_str(rec['start'])}\n"
-              f"# cwd={rec['cwd']}\n# path={rec['path']}\n\n")
+              f"# cwd={ws_path(rec['cwd'])}\n# path={rec['path']}\n\n")
     out = header + body
     if args.out:
         with open(args.out, "w", encoding="utf-8") as f:

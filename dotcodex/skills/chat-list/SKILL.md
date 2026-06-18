@@ -46,6 +46,8 @@ Run the core and **present the listing itself, not a prose summary**:
 python3 <library_path>/scripts/chat-list.py [options]
 ```
 
+(On Windows use `python` / `py` instead of `python3`, or the `chat-list` command if it is on PATH.)
+
 Show the output rows (`#`, time, origin, id, size, title, plus any `--grep` / `--head` / `--tail`
 matching or preview lines) with their numbers and ids intact — those are the handles the user
 needs to follow up (`--dump <id>`, picking a workspace, etc.). A one- or two-line orienting note
