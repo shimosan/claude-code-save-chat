@@ -10,6 +10,10 @@ Each script should have a short entry here. Simple scripts can be fully document
 
 - [`save-chat-core.md`](save-chat-core.md): the shared save-chat specification (note format, slug/tag rules, revision rules, wikilink scope, platform binding contract). The Claude Code command, Codex skill, and Copilot prompt are thin skins that read this file at runtime.
 
+### Conversation History
+
+- [`chat-list.py`](chat-list.py): deterministic, read-only browser that lists Claude Code and Codex conversation history together, per workspace. Default lists the current workspace's merged, time-sorted history; `--ws <name|path>` (repeatable / comma-separated, NFC-normalized substring or exact path) targets other workspaces and bundles rename/normalization-split directories; `--workspaces` prints a numbered per-workspace census (counts, span, archived codex as `⊘N`); `--head/--tail N` previews each conversation; `--dump <id>` emits a conversation's full readable text (stdout, `--out FILE`, `--raw` for raw jsonl, or pipe to `cursor -` / `code -` for an unsaved editor buffer). Reads `~/.claude/projects/*.jsonl` (claude) and the `~/.codex/sqlite/state_5.sqlite` `threads` table (codex); start time comes from in-file timestamps (never mtime, which Dropbox sync rewrites), sessions are de-duplicated by `(harness, id)`, and subagent/archived entries are excluded by default. The `chat-list` Claude Code command (`dotclaude/commands/chat-list.md`) is a thin skin that resolves natural-language selectors to exact ids/paths and runs this script.
+
 ### Config Workflow And Helpers
 
 - [`config-update.md`](config-update.md): agent-facing public protocol for config snapshot comparison, local policy/recipe handling, proposal, approval, and handoff to recipes. Thin skills such as `config-manager` should delegate to this file.

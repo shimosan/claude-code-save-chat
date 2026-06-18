@@ -2,7 +2,7 @@
 
 Claude Code / Codex / Copilot の会話保存と複数端末 config 管理を、Obsidian とクラウド同期フォルダに寄せて運用するための個人用ライブラリ。
 
-複数端末で利用する Claude Code (CLI / VS Code 拡張 / Cursor 等) の chat 履歴サマリーを Obsidian vault のノートに保存するためのコマンド `/save-chat` と、端末設定の snapshot / drift 確認 / 安全な apply review を行う `/config-manager` を実装する。あわせて、Claude Code / Codex / Copilot 向けの agent 設定、save-chat / config-manager workflow、補助スクリプトをクラウドストレージ (Dropbox / iCloud Drive / Google Drive 等) 経由で配布・共有する。Obsidian vault もクラウドストレージ経由で共有すると便利。
+複数端末で利用する Claude Code (CLI / VS Code 拡張 / Cursor 等) の chat 履歴サマリーを Obsidian vault のノートに保存するためのコマンド `/save-chat` と、端末設定の snapshot / drift 確認 / 安全な apply review を行う `/config-manager`、および Claude Code と Codex の会話履歴をワークスペース単位で横断一覧する読み取り専用コマンド `/chat-list` を実装する。あわせて、Claude Code / Codex / Copilot 向けの agent 設定、save-chat / config-manager workflow、補助スクリプトをクラウドストレージ (Dropbox / iCloud Drive / Google Drive 等) 経由で配布・共有する。Obsidian vault もクラウドストレージ経由で共有すると便利。
 
 ## 免責
 
@@ -31,7 +31,8 @@ This library publishes personal configuration and operations helpers as-is, with
 │   ├── CLAUDE.md                ← 共有ルール + 端末設定 + メモリを統合した管理ブロック構造 (1 ファイル)
 │   └── commands/                ← ~/.claude/commands/ へ deploy する slash commands
 │       ├── save-chat.md         ← save-chat core への薄い入口 (Claude Code 皮)
-│       └── config-manager.md    ← config snapshot/update workflow への薄い入口
+│       ├── config-manager.md    ← config snapshot/update workflow への薄い入口
+│       └── chat-list.md         ← chat-list.py への薄い入口 (claude+codex 会話履歴の横断リスト)
 ├── .gitignore                   ← git 除外パターン
 ├── dotcodex/                    ← 各端末の ~/.codex/ へ deploy する Codex 原本
 │   ├── AGENTS.md                ← Codex global rules adapter
@@ -42,6 +43,7 @@ This library publishes personal configuration and operations helpers as-is, with
 ├── scripts/                     ← workflow の正本 + 補助スクリプト集 (非配布。README は目次)
 │   ├── README.md                ← scripts の目次
 │   ├── save-chat-core.md        ← save-chat の共通仕様 (workflow authority、3 皮が実行時に読む)
+│   ├── chat-list.py             ← claude+codex 会話履歴の横断リスト (chat-list 皮が実行時に読む)
 │   ├── config-update.md         ← config snapshot/update workflow の正
 │   ├── config-apply-recipes.md  ← snapshot-driven config recipes
 │   ├── config-apply-patches.md  ← optional local patch recipes の入口
@@ -147,6 +149,41 @@ recipe は、よく使う安全な apply 手順の型を固定するためのも
 snapshot には editor settings のように低リスクで宣言的に再現できる値もあれば、`brew` / `pyenv` / fonts / model list のように provisioning 計画が必要な値、`claude.md` の host-info のように端末固有でコピーしてはいけない値、version/path のような診断値も混在する。したがって、recipe が無い source は即エラーではなく、まず review-only で `low` / `medium` / `high` / `system` / `local-sensitive` / `diagnostic` の性質を分類し、target・old/new・backup・rollback・verification を明示してから承認を求める。反復する ad-hoc 操作だけを public recipe または `local/config-local-recipes.md` へ昇格する。
 
 実装済み recipe には [`scripts/config-apply-recipes.md`](scripts/config-apply-recipes.md) で `risk class` を明示する。未カバー source の一般ルールも同ファイルに置き、流動的な拡張・ツール・環境差を全列挙しない方針にしている。
+
+## `/chat-list` — Claude Code と Codex の会話履歴を横断一覧 (読み取り専用)
+
+Claude Code と Codex の会話履歴を **ワークスペース単位で 1 つに束ねて列挙・閲覧する**読み取り専用ツール。純正 UI が片方ずつ・WS 区別なしでしか見せない履歴を、横断・時系列で一覧できる。要約や引き継ぎ (resume) はせず、列挙と全文の取り出しに徹する。
+
+使い方は 2 通り。**生スクリプトを直接叩くだけで十分実用**で、slash command はその薄い糖衣:
+
+**(1) 生 CLI (人間が端末で直接 — これだけで完結)**
+
+```bash
+python3 <library_path>/scripts/chat-list.py                   # 現在 WS の claude+codex 履歴を時系列で
+python3 <library_path>/scripts/chat-list.py --workspaces      # WS 一覧 (各 WS の会話数・期間の census)
+python3 <library_path>/scripts/chat-list.py --ws GPU          # WS を部分一致で指定 (rename/正規化分裂も束ねる)
+python3 <library_path>/scripts/chat-list.py --grep NFC        # 本文を全文検索 (一致行も表示)
+python3 <library_path>/scripts/chat-list.py --dump <id> --open  # 会話の全文をエディタの untitled buffer へ
+python3 <library_path>/scripts/chat-list.py --help            # オプションの正本
+```
+
+**(2) `/chat-list` slash command (agent 経由)** — agent が自然文を確定セレクタ (WS path / 会話 id) に解決し、`--dump` 等の前に対象を提示して確認を取る。生 CLI に NL 解決と安全確認を足しただけ。
+
+```
+/chat-list / /chat-list --workspaces       ← 生 CLI と同じ
+このWSのcodexの履歴だけ見せて                ← agent が --tool codex 等に解決
+○○ を含む会話を探して                       ← --grep に解決
+N番の会話を全部見せて                        ← 番号から id を確定し --dump
+```
+
+**2 層構造** (core は実行可能スクリプト。現状は Claude Code 皮のみ、Codex / Copilot 皮は無し):
+
+| | 実体 (正) | 展開先 |
+|---|---|---|
+| **core (正)** | [`scripts/chat-list.py`](scripts/chat-list.py) | **非配布** (library 単一コピー、生 CLI または皮が `library_path` 経由で実行) |
+| **Claude Code 皮** | [`dotclaude/commands/chat-list.md`](dotclaude/commands/chat-list.md) | slash command。`~/.claude/commands/` へ load で配布 |
+
+core は決定的 (LLM 推論ゼロ) なので生 CLI で完結する。claude は `~/.claude/projects/*.jsonl`、codex は `~/.codex/sqlite/state_5.sqlite` の `threads` を読む。開始時刻は会話本体の timestamp が正本 (mtime は Dropbox 同期で揃うため使わない)、同一セッションの物理重複は `(harness, id)` で排除、codex の subagent / archived は既定で除外。
 
 ## Codex 版 global rules / skills (任意)
 
