@@ -1,7 +1,7 @@
 ---
 description: claude-code と codex の会話履歴を横断で列挙・閲覧する (読み取り専用)。既定は現在の WS の統合履歴を時系列で。WS 一覧・各会話の先頭/末尾プレビュー・特定会話の全文 dump も可能。
 allowed-tools: ["Bash", "Read"]
-argument-hint: "[--ws <名前>] [--workspaces] [--dump <id|番号>] [--title <語>] [--grep <語>] [--head N|--tail N] [--tool claude|codex] [--since <日付>] [--sort count|name] [--open]"
+argument-hint: "[--ws <名前>] [--workspaces] [--dump <id|番号>] [--title <語>] [--grep <語>] [--head N|--tail N] [--tool claude|codex] [--since <日付>] [--sort time|mtime|size|count|name] [--reverse] [--open]"
 ---
 
 # /chat-list — 会話履歴の横断リスト (Claude Code 皮)
@@ -29,7 +29,7 @@ claude-code と codex の会話履歴を横断で**列挙・閲覧するだけ**
 ## 起動
 
 `python3 <library_path>/scripts/chat-list.py [options]` を Bash で実行する。
-**出力 (一覧そのもの) を提示する — 散文サマリーに要約し直さない。** 各行 (`#`・時刻・由来・ID・タイトル、
+**出力 (一覧そのもの) を提示する — 散文サマリーに要約し直さない。** 各行 (`#`・時刻・由来・ID・サイズ・タイトル、
 `--grep`/`--head`/`--tail` の一致・プレビュー行) はユーザーが次に叩く手がかり (`--dump <id>`・WS 選択など)
 なので、**番号と ID を残したまま見せる**。先頭に 1〜2 行の要約コメントを添えるのは可。件数が多くても行を
 散文に潰さず一覧を出す (必要なら「関連分に絞る/上位 N 行に限る」と述べてから絞る)。
@@ -47,10 +47,11 @@ claude-code と codex の会話履歴を横断で**列挙・閲覧するだけ**
   - `--grep <語>`: **本文 (会話の中身) を全文検索**し一致行も表示 (本文を読むので遅め。`--ws` スコープ内のみ)。
 - `--ws` は既定一覧でも `--workspaces` でも効く WS 限定子 (`--workspaces --ws GPU` で census を絞る)。
   **`--all-ws` とは排他** (同時指定はエラー)。
-- `--sort last|count|name|first`: `--workspaces` の並び替え (既定 last=最終活動↓)。
+- `--sort` / `--reverse`: 並び替え。**既定 `time`=開始時刻・新しい順 (最新が上。両モードとも「開始」基準で統一)**。キー = `time`(開始) / `mtime`(最終活動。会話内の最後の timestamp で OS の file mtime ではない) / `size`(バイト数。会話一覧=会話ごと, `--workspaces`=合計) / `count`(本数。`--workspaces` 専用) / `name`。`--workspaces` では `time`=初回活動・`mtime`=最終活動。time/mtime/size/count は新しい/大きい順、name=昇順、`--reverse`(`-r`) で反転。無効なキー (会話一覧で `count` 等) はエラー。
+- 各会話に**サイズ列**(会話本体ファイルのバイト数を `696K`/`2.4M` 風に。`--format json` は正確な `bytes` 整数)。
 - `--open [cursor|code]`: 出力をエディタの untitled バッファで開く (list / workspaces / dump 全モード。下記)。
 - `--include-subagents` / `--include-archived`: 既定で除外している codex の subagent / archived を含める
-  (archived は codex のみ。`--workspaces` の census は常に `⊘N` で archived を別表示)。
+  (archived は codex のみ。`--workspaces` の census は常に `*N` で archived を別表示)。
 - `--format json`: 機械可読 (番号→WS / id 解決などに使う)。
 - 細かい調整: `--limit N` (会話一覧を末尾 N 件に。`--workspaces` には効かない)、`--ws-match exact|basename|substring` (`--ws` のマッチ方式を上書き。既定は厳密 or basename 一致)。
 

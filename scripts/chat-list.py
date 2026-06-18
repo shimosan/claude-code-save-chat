@@ -68,6 +68,19 @@ def rpad(s, w):
     return " " * max(0, w - vwidth(s)) + s
 
 
+def human_size(n):
+    """バイト数を 536B / 21K / 5.1M 風に。"""
+    if n is None or n < 0:
+        return "?"
+    n = float(n)
+    for unit in ("B", "K", "M", "G"):
+        if n < 1024 or unit == "G":
+            if unit == "B":
+                return f"{int(n)}B"
+            return f"{n:.0f}{unit}" if n >= 10 else f"{n:.1f}{unit}"
+        n /= 1024
+
+
 # ---------- cwd マッチ (規則ベース。NL 推測はしない) ----------
 def norm(s):
     return unicodedata.normalize("NFC", s) if s else s
@@ -114,8 +127,9 @@ def ws_letter(i):
 
 # ---------- claude ----------
 def _scan_claude_meta(path):
-    """1 jsonl から (start, customTitle, aiTitle, entrypoint, cwd) を抽出 (substring で json.loads を間引く)."""
-    start = ct = at = ep = cwd = None
+    """1 jsonl から (start, end, customTitle, aiTitle, entrypoint, cwd) を抽出.
+    start=最初の timestamp, end=最後の timestamp (最終活動)。substring で json.loads を間引く."""
+    start = end = ct = at = ep = cwd = None
     try:
         f = open(path, encoding="utf-8")
     except OSError:
@@ -128,8 +142,10 @@ def _scan_claude_meta(path):
                 o = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if start is None and o.get("timestamp"):
-                start = o["timestamp"]
+            if o.get("timestamp"):
+                if start is None:
+                    start = o["timestamp"]
+                end = o["timestamp"]
             if o.get("customTitle"):
                 ct = o["customTitle"]
             if o.get("aiTitle"):
@@ -138,7 +154,7 @@ def _scan_claude_meta(path):
                 ep = o["entrypoint"]
             if cwd is None and o.get("cwd"):
                 cwd = o["cwd"]
-    return start, ct, at, ep, cwd
+    return start, end, ct, at, ep, cwd
 
 
 def _dir_cwd(d):
@@ -178,17 +194,20 @@ def iter_claude_sessions(pred=None):
             meta = _scan_claude_meta(os.path.join(d, fn))
             if meta is None:
                 continue
-            start, ct, at, ep, cwd = meta
+            start, end, ct, at, ep, cwd = meta
             if pred is not None and (cwd is None or not pred(cwd)):
                 continue
+            fp = os.path.join(d, fn)
             yield {
                 "id": fn[:-6],
                 "harness": "claude",
                 "origin": (ep or "?").replace("claude-", ""),
                 "start": to_dt(start),
+                "updated": to_dt(end),
                 "title": ct or at or "",
                 "cwd": cwd,
-                "path": os.path.join(d, fn),
+                "path": fp,
+                "bytes": _filesize(fp),
                 "archived": False,
             }
 
@@ -209,9 +228,9 @@ def iter_codex_sessions(pred=None, include_subagents=False, include_archived=Fal
         return
     with con:
         rows = con.execute(
-            "SELECT id, rollout_path, cwd, title, created_at, source, archived FROM threads"
+            "SELECT id, rollout_path, cwd, title, created_at, updated_at, source, archived FROM threads"
         ).fetchall()
-    for cid, rp, cwd, title, created, source, archived in rows:
+    for cid, rp, cwd, title, created, updated, source, archived in rows:
         if not include_subagents and source and "subagent" in source:
             continue
         if not include_archived and archived:
@@ -223,9 +242,11 @@ def iter_codex_sessions(pred=None, include_subagents=False, include_archived=Fal
             "harness": "codex",
             "origin": source if (source and "subagent" not in source) else "subagent",
             "start": to_dt(created),
+            "updated": to_dt(updated),
             "title": title or "",
             "cwd": cwd,
             "path": rp,
+            "bytes": _filesize(rp),
             "archived": bool(archived),
         }
 
@@ -322,7 +343,7 @@ def collect(args, pred):
     best = {}
     for r in recs:
         key = (r["harness"], r["id"])
-        sz = _filesize(r["path"])
+        sz = r["bytes"]
         if key not in best or sz > best[key][0]:
             best[key] = (sz, r)
     recs = [v[1] for v in best.values()]
@@ -348,6 +369,34 @@ def origin_label(rec):
     return ("CC/" if rec["harness"] == "claude" else "CX/") + rec["origin"]
 
 
+_MIN_DT = datetime.datetime.min.replace(tzinfo=UTC)
+
+
+def _sort_recs(recs, how, reverse=False):
+    """会話一覧の並べ替え。既定 time=開始時刻、time/mtime とも新しい順 (最新が上)。--reverse で反転。
+    キー: time=開始 / mtime=最終活動 / size=サイズ / name=タイトル。count は会話一覧には無効 → time."""
+    how = how if how in ("mtime", "size", "name") else "time"
+    if how == "mtime":
+        keyf, desc = (lambda r: r["updated"] or r["start"] or _MIN_DT), True
+    elif how == "size":
+        keyf, desc = (lambda r: r["bytes"]), True
+    elif how == "name":
+        keyf, desc = (lambda r: r["title"].lower()), False
+    else:  # time = 開始 (新しい順が既定)
+        keyf, desc = (lambda r: r["start"] or _MIN_DT), True
+    recs.sort(key=keyf, reverse=desc ^ reverse)
+    return recs
+
+
+def _list_sort_label(how, reverse):
+    how = how if how in ("mtime", "size", "name") else "time"
+    base = {"time": "開始時刻", "mtime": "最終活動", "size": "サイズ", "name": "タイトル"}[how]
+    desc = (how in ("time", "mtime", "size")) ^ reverse
+    if how in ("time", "mtime"):
+        return base + ("↓ 新しい順" if desc else "↑ 古い順")
+    return base + ("↓" if desc else "↑")
+
+
 # ---------- 出力: 一覧 ----------
 def _ws_key(r):
     return norm(r["cwd"]) if r["cwd"] else "(不明)"
@@ -357,7 +406,8 @@ def cmd_list(args, pred):
     recs = collect(args, pred)
     if args.limit:
         recs = recs[-args.limit:]
-    # 対象 WS に出現順 (= 最古会話順) で A/B/C… を振る
+    recs = _sort_recs(recs, args.sort, args.reverse)
+    # 対象 WS に出現順で A/B/C… を振る
     order = []
     letters = {}
     counts = {}
@@ -380,12 +430,16 @@ def cmd_list(args, pred):
             print(f"#   {letters[k]}  {(cwd or '(不明)').replace(HOME, '~')}  ({counts[k]}本)")
     else:
         print("#   (該当なし)")
-    print(f"# 計 {len(recs)} 本 (claude {cc} + codex {cx})  ソート: 開始時刻昇順\n")
-    print(pad("#", 4) + pad(f"開始({TZLABEL})", 17) + pad("由来", 13) + pad("ID", 10) + "タイトル")
+    print(f"# 計 {len(recs)} 本 (claude {cc} + codex {cx})  ソート: {_list_sort_label(args.sort, args.reverse)}")
+    if args.include_archived:
+        print("# 由来末尾 * = archived (codex)")
+    print()
+    print(pad("#", 4) + pad(f"開始({TZLABEL})", 17) + pad("由来", 15) + pad("ID", 10)
+          + rpad("サイズ", 6) + "  " + "タイトル")
     for i, r in enumerate(recs, 1):
-        origin = f"{letters[_ws_key(r)]} {origin_label(r)}" + (" ⊘" if r["archived"] else "")
-        print(pad(str(i), 4) + pad(loc_str(r["start"]), 17) + pad(origin, 13)
-              + pad(r["id"][:8], 10) + r["title"][:50])
+        origin = f"{letters[_ws_key(r)]} {origin_label(r)}" + ("*" if r["archived"] else "")
+        print(pad(str(i), 4) + pad(loc_str(r["start"]), 17) + pad(origin, 15)
+              + pad(r["id"][:8], 10) + rpad(human_size(r["bytes"]), 6) + "  " + r["title"][:50])
         if r.get("_match"):  # --grep の一致行を優先表示
             for ln in r["_match"]:
                 print(f"      ┊ {ln[:96]}")
@@ -419,38 +473,47 @@ def cmd_workspaces(args, pred=None):
         k = norm(r["cwd"])
         if pred is not None and not pred(k):
             continue
-        a = agg.setdefault(k, {"cc": 0, "cx": 0, "cxa": 0, "first": None, "last": None})
+        a = agg.setdefault(k, {"cc": 0, "cx": 0, "cxa": 0, "bytes": 0, "first": None, "last": None})
         a["cc" if r["harness"] == "claude" else ("cxa" if r["archived"] else "cx")] += 1
-        dt = r["start"]
-        if dt:
-            a["first"] = min(a["first"] or dt, dt)
-            a["last"] = max(a["last"] or dt, dt)
+        a["bytes"] += max(r["bytes"], 0)  # WS の合計バイト数 (--sort size / サイズ列)
+        if r["start"]:  # first = 初回活動 (最古の開始)
+            a["first"] = min(a["first"] or r["start"], r["start"])
+        upd = r["updated"] or r["start"]
+        if upd:  # last = 最終活動 (最新の更新)
+            a["last"] = max(a["last"] or upd, upd)
 
+    # 並べ替え (会話一覧と統一: 既定 time=初回活動、time/mtime とも新しい順、--reverse で反転)。
+    # time=初回活動(first) / mtime=最終活動(last) / size=合計バイト / count=本数 / name=path。
     items = list(agg.items())
-    if args.sort == "count":
-        items.sort(key=lambda kv: kv[1]["cc"] + kv[1]["cx"] + kv[1]["cxa"], reverse=True)
-    elif args.sort == "name":
-        items.sort(key=lambda kv: kv[0])
-    elif args.sort == "first":
-        items.sort(key=lambda kv: (kv[1]["first"] is None, kv[1]["first"]))
-    else:  # last (既定)
-        items.sort(key=lambda kv: (kv[1]["last"] is None, kv[1]["last"]), reverse=True)
+    how = args.sort if args.sort in ("mtime", "size", "count", "name") else "time"
+    if how == "mtime":
+        keyf, desc = (lambda kv: kv[1]["last"] or _MIN_DT), True
+    elif how == "size":
+        keyf, desc = (lambda kv: kv[1]["bytes"]), True
+    elif how == "count":
+        keyf, desc = (lambda kv: kv[1]["cc"] + kv[1]["cx"] + kv[1]["cxa"]), True
+    elif how == "name":
+        keyf, desc = (lambda kv: kv[0]), False
+    else:  # time = 初回活動 (first, 新しい順が既定)
+        keyf, desc = (lambda kv: kv[1]["first"] or _MIN_DT), True
+    items.sort(key=keyf, reverse=desc ^ args.reverse)
     if args.format == "json":
         print(json.dumps([{"i": i, "cwd": k, **{kk: (vv.isoformat() if isinstance(vv, datetime.datetime) else vv)
                                                 for kk, vv in v.items()}} for i, (k, v) in enumerate(items, 1)],
                          ensure_ascii=False, indent=1))
         return
-    print(f"# chat-list --workspaces  ({len(items)} WS)   計=CC+CX(active)  CC=claude  CX=codex  ⊘=archived(codex)")
+    print(f"# chat-list --workspaces  ({len(items)} WS)   計=CC+CX(active)  CC=claude  CX=codex  "
+          "*=archived(codex)  サイズ=会話合計バイト")
     print("# 行頭 # は表示ごとの通し番号 (不安定キー)。確定は WS の path。\n")
 
     def cols(c0, c1, c2, c3, c4):  # 固定幅・右寄せの数値カラム
         return rpad(c0, 3) + " " + rpad(c1, 4) + " " + rpad(c2, 4) + " " + rpad(c3, 4) + " " + rpad(c4, 4) + "  "
 
-    print(cols("#", "計", "CC", "CX", "⊘") + pad(f"期間({TZLABEL})", 24) + "WS")
+    print(cols("#", "計", "CC", "CX", "*") + rpad("サイズ", 6) + "  " + pad(f"期間({TZLABEL})", 24) + "WS")
     for i, (cwd, a) in enumerate(items, 1):
         period = f"{loc_str(a['first'])[:10]}〜{loc_str(a['last'])[:10]}"
         print(cols(str(i), str(a["cc"] + a["cx"]), str(a["cc"]), str(a["cx"]), str(a["cxa"]))
-              + pad(period, 24) + cwd.replace(HOME, "~"))
+              + rpad(human_size(a["bytes"]), 6) + "  " + pad(period, 24) + cwd.replace(HOME, "~"))
 
 
 # ---------- 出力: dump ----------
@@ -492,7 +555,21 @@ def cmd_dump(args):
 
 # ---------- CLI ----------
 def main(argv=None):
-    p = argparse.ArgumentParser(prog="chat-list", description="claude+codex 会話履歴の横断リスト (読み取り専用)")
+    p = argparse.ArgumentParser(
+        prog="chat-list",
+        description="claude+codex 会話履歴の横断リスト (読み取り専用)",
+        epilog=(
+            "記号・列の見方:\n"
+            "  由来列 = '<WSラベル> CC|CX/<起動元>'  (CC=Claude Code, CX=Codex)\n"
+            "  由来末尾の '*'      = archived (codex のみ)\n"
+            "  WSラベル A/B/C…     = 一覧冒頭 / --workspaces の対象 WS 凡例に対応\n"
+            "  サイズ列            = 会話本体ファイルのバイト数 (--format json は正確な bytes)\n"
+            "  '#'                 = 表示ごとに振り直す通し番号 (不安定。確定は id か WS path)\n"
+            "  並び               = 既定 time=開始時刻・新しい順 (最新が上, 両モードとも開始基準)。\n"
+            "                        mtime=最終活動 / size / count / name。--reverse で反転"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     # --ws と --all-ws は排他 (--all-ws ≡ --ws * = 全 WS)
     gws = p.add_mutually_exclusive_group()
     gws.add_argument("--ws", action="append", metavar="VALUE",
@@ -518,10 +595,18 @@ def main(argv=None):
     p.add_argument("--include-subagents", action="store_true", help="codex の subagent スレッドも含める")
     p.add_argument("--include-archived", action="store_true", help="archived も含める")
     p.add_argument("--limit", type=int, help="会話一覧を末尾 N 件に絞る (--workspaces には効かない)")
-    p.add_argument("--sort", choices=["last", "count", "name", "first"], default="last",
-                   help="--workspaces の並び: last=最終活動↓(既定) / count=合計↓ / name=path↑ / first=初回↑")
+    p.add_argument("--sort", choices=["time", "mtime", "size", "count", "name"], default="time",
+                   help="並び替えキー (既定 time)。time=開始 / mtime=最終活動 (会話内の最後の timestamp。"
+                        "OS の file mtime ではない) / size=バイト数 (会話一覧=会話ごと, --workspaces=合計) / "
+                        "count=本数 (--workspaces 専用) / name。time/mtime/size/count は新しい/大きい順、name=昇順。"
+                        "--workspaces では time=初回活動・mtime=最終活動。--reverse で反転")
+    p.add_argument("--reverse", "-r", action="store_true", help="並び順を反転 (全モード・全キー共通)")
     p.add_argument("--format", choices=["table", "json"], default="table")
     args = p.parse_args(argv)
+
+    # mode で無効な sort キーは黙ってフォールバックせずエラーにする
+    if args.sort == "count" and not args.workspaces:
+        p.error("--sort count は --workspaces 専用です (会話一覧では time / mtime / size / name)")
 
     # --ws はどのモードでも効く限定子。無ければ: list は現在 cwd / workspaces は全 WS が既定。
     def resolve_pred(default_to_cwd):

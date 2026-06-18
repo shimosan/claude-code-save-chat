@@ -46,7 +46,7 @@ Run the core and **present the listing itself, not a prose summary**:
 python3 <library_path>/scripts/chat-list.py [options]
 ```
 
-Show the output rows (`#`, time, origin, id, title, plus any `--grep` / `--head` / `--tail`
+Show the output rows (`#`, time, origin, id, size, title, plus any `--grep` / `--head` / `--tail`
 matching or preview lines) with their numbers and ids intact — those are the handles the user
 needs to follow up (`--dump <id>`, picking a workspace, etc.). A one- or two-line orienting note
 above the list is fine, but do not replace the rows with a digest. For long results, still show
@@ -54,22 +54,29 @@ the rows (or the most relevant / top-N, saying so) rather than summarizing them 
 
 `--help` is the authoritative option reference. Main options:
 
-- no args: the current cwd's workspace, claude+codex merged, time-sorted.
+- no args: the current cwd's workspace, claude+codex merged, newest first.
 - `--ws <value>`: target a workspace. A leading `/` is an exact absolute path; otherwise a cwd
   substring (NFC-normalized; bundles rename/normalization-split dirs). Repeatable / comma-separated
   for multiple workspaces. Works in the default list and with `--workspaces`. **Mutually exclusive
   with `--all-ws`** (giving both is an error).
 - `--all-ws`: every workspace (no cwd restriction). Cannot be combined with `--ws`.
 - `--workspaces`: numbered per-workspace census (conversation counts, span; archived codex shown
-  as a separate `⊘N`). `--sort last|count|name|first` orders it.
+  as a separate `*N`).
+- `--sort` / `--reverse`: ordering, consistent across modes — **default `time` = start time,
+  newest first** (both modes are start-based). Keys: `time` (start), `mtime` (last activity = the
+  last in-content timestamp, not the OS file mtime), `size` (byte size: conversation list = per
+  conversation, --workspaces = total), `count` (--workspaces only), `name`. In `--workspaces`,
+  `time` = first activity and `mtime` = last activity. Natural direction: time/mtime/size/count
+  descending (newest/largest first), name ascending; `--reverse` (`-r`) flips it in any mode. An
+  invalid key for the mode (e.g. `count` for the conversation list) is an error. Each conversation
+  row shows a size column (file byte count, human-readable; exact `bytes` in `--format json`).
 - `--head N` / `--tail N`: preview each conversation's first / last N lines.
 - `--title <text>`: filter by title (fast, metadata only).
 - `--grep <text>`: full-text search of conversation bodies, showing matching lines (reads bodies,
   slower; limited to the `--ws` scope).
 - `--dump <id>`: a conversation's full text to stdout, `--out FILE`, or `--open [cursor|code]` for
   an editor buffer; `--raw` for raw jsonl.
-- `--limit N`: keep only the newest N of the conversation list ("last/recent N"; does not affect
-  `--workspaces`).
+- `--limit N`: keep only the newest N of the conversation list (does not affect `--workspaces`).
 - `--tool claude|codex`, `--since YYYY-MM-DD`, `--include-subagents`, `--include-archived`,
   `--format json`.
 
