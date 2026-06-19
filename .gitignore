@@ -13,6 +13,9 @@ scratch/
 .claude/*
 !.claude/CLAUDE.md
 
+# Cursor per-project rules/state (editor-local; memory-collection experiment artifacts; not distributed)
+.cursor/
+
 # Dropbox-synced, NOT published to GitHub (cross-machine private)
 # Long-term dev records, insights
 notes/
