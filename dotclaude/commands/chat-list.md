@@ -44,12 +44,12 @@ library の決定的コア `scripts/chat-list.py` に委譲する thin なエン
 - `--all`: WS で絞らず全件。**`--path` とは排他**。
 - `--exact`: `--path` / `--title` を完全一致に (既定は部分一致)。
 - `--workspaces`: WS 一覧 (各 WS のチャット数・start/end の census)。
-- `--dump <id>`: 指定会話の全文。既定 stdout(`> file` でファイル)、`--open` でエディタ buffer、`--json` で構造化メッセージ。
+- `--dump <id>`: 指定会話の全文。各メッセージに時刻を併記 (会話の時間ギャップが見える)。既定 stdout(`> file` でファイル)、`--open` でエディタ buffer、`--json` で構造化メッセージ (各要素に `ts`)。
 - フィルタ (両モード): `--tool claude|codex|cursor|copilot` / `--title <語>`(タイトル絞り) / `--grep <語>`(**本文全文検索**・遅め)。
 - `--path` / `--title` / `--grep` / `--tool` は一覧でも `--workspaces` でも効く(`--workspaces --path GPU` で census を絞る)。
 - `--sort` / `--reverse`(`-r`): 並び替え。**既定 `start`=開始時刻・新しい順**。列 header 名と一致するキー: 共通 `start` / `end`(最終活動。会話内の最後の timestamp で OS の file mtime ではない) / `size`、一覧専用 `title`、`--workspaces` 専用 `total`(本数) / `path`。start/end/size/total は新しい/大きい順、title/path は昇順。`--reverse` で反転。モード外キーはエラー。
 - `--head N` / `--tail N`: **出力の先頭/末尾 N 件**に絞る (両モード・Unix 流)。
-- `--preview [N]`: 一覧で各会話の本文プレビュー。`N`=先頭 N 行 / `--preview=-N`=末尾 N 行 / 単体=既定 10 行。
+- `--preview [N]`: 一覧で各会話の本文プレビュー。`N`=先頭 N 行 / `--preview=-N`=末尾 N 行 / 単体=既定 10 行。各行頭に `[role HH:MM]`。
 - 各会話に**サイズ列**(会話本体ファイルのバイト数を `696K`/`2.4M` 風に。`--json` は正確な `bytes` 整数)。
 - `--open [cursor|code]`: 出力をエディタの untitled バッファで開く (全モード。下記)。
 - `--long` (`-l`): 一覧に**モデル列**を追加 (cursor/copilot は記録値、claude は jsonl・codex は rollout head から取得)。既定は省略。

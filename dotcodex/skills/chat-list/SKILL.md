@@ -73,12 +73,13 @@ the rows (or the most relevant / top-N, saying so) rather than summarizing them 
   for the mode is an error.
 - `--head N` / `--tail N`: keep the first / last N rows of the output (Unix-like; both modes).
 - `--preview [N]`: in the conversation list, show each conversation's body preview — `N` first N
-  lines, `--preview=-N` last N lines, bare `--preview` = 10.
+  lines, `--preview=-N` last N lines, bare `--preview` = 10. Each line is prefixed `[role HH:MM]`.
 - `--title <text>` / `--grep <text>`: filter by title (substring, or exact with `--exact`) / by
   body full-text (reads bodies, slower). Both work in both modes.
 - `--tool claude|codex|cursor|copilot`, `--include-subagents`: both modes.
 - `--dump <id>`: a conversation's full text to stdout (`> file` to save) or `--open [cursor|code]`
-  for an editor buffer; `--json` for a structured message array.
+  for an editor buffer; `--json` for a structured message array. Each message is annotated with its
+  timestamp (a `ts` field under `--json`) so conversation time gaps are visible.
 - `--long` (`-l`): add a model column (cursor/copilot from records; claude from jsonl, codex from
   rollout head). Omitted by default.
 - archived/hidden rows are **always shown** (never excluded) with a `*` mark after origin; under

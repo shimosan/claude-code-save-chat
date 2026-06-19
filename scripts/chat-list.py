@@ -499,15 +499,16 @@ def _copilot_msgs(d):
     """VS Code chat json の requests[] -> [(role,text)]。"""
     out = []
     for req in (d.get("requests") or []):
+        ts = _ms_to_dt(req.get("timestamp"))  # request 単位の epoch ms (user/assistant で共有)
         u = ((req.get("message") or {}).get("text") or "").strip()
         if u:
-            out.append(("user", u))
+            out.append(("user", ts, u))
         parts = [p["value"] for p in (req.get("response") or [])
                  if isinstance(p, dict) and isinstance(p.get("value"), str)
                  and p.get("kind") in (None, "markdownContent")]
         a = "\n".join(parts).strip()
         if a:
-            out.append(("assistant", a))
+            out.append(("assistant", ts, a))
     return out
 
 
@@ -656,7 +657,8 @@ def copilot_cli_messages(path):
             if t in ("user.message", "assistant.message"):
                 c = (o.get("data") or {}).get("content")
                 if c and c.strip():
-                    out.append(("user" if t == "user.message" else "assistant", c.strip()))
+                    out.append(("user" if t == "user.message" else "assistant",
+                                _iso_to_dt(o.get("timestamp")), c.strip()))
     except OSError:
         pass
     return out
@@ -886,7 +888,8 @@ def iter_cursor_sessions(pred=None, include_subagents=False):
                 continue
             t = (b.get("text") or "").strip()
             if t:
-                msgs.append(("user" if b.get("type") == 1 else "assistant", t))
+                msgs.append(("user" if b.get("type") == 1 else "assistant",
+                             _iso_to_dt(h.get("createdAt")), t))
         if not msgs:
             continue  # tool/diff/thinking のみ = human-visible text 無し
         start = _ms_to_dt(comp.get("createdAt"))
@@ -903,10 +906,10 @@ def iter_cursor_sessions(pred=None, include_subagents=False):
             "model": (mc.get("modelName") if isinstance(mc, dict) else None),
             "start": start,
             "updated": _ms_to_dt(comp.get("lastUpdatedAt")),
-            "title": comp.get("name") or msgs[0][1].splitlines()[0][:80],
+            "title": comp.get("name") or msgs[0][2].splitlines()[0][:80],
             "cwd": cwd,
             "path": f"cursorDiskKV:composerData:{cid}",  # virtual (DB-backed)
-            "bytes": sum(len(t) for _, t in msgs),  # 本文長で近似 (ファイル無し)
+            "bytes": sum(len(t) for _, _, t in msgs),  # 本文長で近似 (ファイル無し)
             "archived": cid in archived_ids,  # composer.composerHeaders.isArchived
             "_archmark": "*" if cid in archived_ids else "",  # editor 区別なし → 素の *
             "_msgs": msgs,  # virtual path ゆえ本文をレコードに同梱
@@ -935,7 +938,7 @@ def claude_messages(path):
         else:
             t = ""
         if t.strip():
-            out.append((role, t.strip()))
+            out.append((role, _iso_to_dt(o.get("timestamp")), t.strip()))
     return out
 
 
@@ -955,7 +958,7 @@ def codex_messages(path):
             continue
         t = "\n".join(b.get("text", "") for b in (pl.get("content") or []) if isinstance(b, dict) and b.get("text"))
         if t.strip():
-            out.append((pl["role"], t.strip()))
+            out.append((pl["role"], _iso_to_dt(o.get("timestamp")), t.strip()))
     return out
 
 
@@ -999,11 +1002,17 @@ def messages_of(rec):
     return []
 
 
+def _msg_ts(ts):
+    """メッセージ時刻のローカル表記 (HH:MM)。None は空。"""
+    return ts.astimezone().strftime("%H:%M") if ts else ""
+
+
 def text_lines(rec):
     lines = []
-    for role, t in messages_of(rec):
+    for role, ts, t in messages_of(rec):
+        head = f"[{role}{(' ' + _msg_ts(ts)) if ts else ''}] "
         for i, ln in enumerate(t.split("\n")):
-            lines.append((f"[{role}] " if i == 0 else "        ") + ln)
+            lines.append((head if i == 0 else " " * len(head)) + ln)
     return lines
 
 
@@ -1011,10 +1020,11 @@ def grep_matches(rec, term, maxn=4):
     """本文 (会話の中身) から term を含む行を抽出 (大文字小文字無視)。1 会話あたり maxn 行で打ち切り."""
     tl = term.lower()
     out = []
-    for role, t in messages_of(rec):
+    for role, ts, t in messages_of(rec):
+        head = f"[{role}{(' ' + _msg_ts(ts)) if ts else ''}]"
         for ln in t.split("\n"):
             if tl in ln.lower():
-                out.append(f"[{role}] {ln.strip()}")
+                out.append(f"{head} {ln.strip()}")
                 if len(out) >= maxn:
                     return out
     return out
@@ -1293,13 +1303,14 @@ def cmd_dump(args):
         print(json.dumps({"id": rec["id"], "harness": rec["harness"], "origin": rec["origin"],
                           "model": rec.get("model"), "start": rec["start"], "updated": rec["updated"],
                           "cwd": ws_path(rec["cwd"]), "title": rec["title"], "path": rec["path"],
-                          "messages": [{"role": rl, "text": t} for rl, t in msgs]},
+                          "messages": [{"role": rl, "ts": ts, "text": t} for rl, ts, t in msgs]},
                          ensure_ascii=False, indent=1, default=_json_default))
         return
     model = f" model={rec['model']}" if rec.get("model") else ""
     header = (f"# {rec['title']}\n# id={rec['id']} {origin_label(rec)}{model} 開始={loc_str(rec['start'])}\n"
               f"# cwd={ws_path(rec['cwd'])}\n# path={rec['path']}\n\n")
-    sys.stdout.write(header + "\n\n".join(f"### {role}\n{t}" for role, t in msgs) + "\n")
+    sys.stdout.write(header + "\n\n".join(
+        f"### {role}{('  ' + loc_str(ts)) if ts else ''}\n{t}" for role, ts, t in msgs) + "\n")
 
 
 # ---------- CLI ----------
