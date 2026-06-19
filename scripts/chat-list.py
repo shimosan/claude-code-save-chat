@@ -5,18 +5,30 @@ LLM 推論ゼロ・読み取り専用。slash 皮 (dotclaude/commands/chat-list.
 皮は「自然言語 → 確定セレクタ (cwd / 会話 id) の解決」と「dump 前の確認」を担い、
 本 script は確定値だけを受けて機械的に動く。
 
-データ源 (2026-06-18 実測):
+データ源 (2026-06-18〜19 実測):
 - claude: ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl
     開始 = 最初の timestamp / id = ファイル名 stem / 由来 = entrypoint /
     名前 = 最後の customTitle → 無ければ aiTitle / cwd = 各行の cwd フィールド
 - codex : ~/.codex/sqlite/state_5.sqlite の threads テーブル (cwd/title/created_at/rollout_path)
     本体 = rollout_path の jsonl。subagent (source に subagent) / archived は既定で除外。
+- cursor: <Cursor>/User/globalStorage/state.vscdb の cursorDiskKV (composerData:<id> ヘッダ +
+    bubbleId:<id>:<bid> 本文)。live なので /tmp コピーしてから開く。cwd=workspaceIdentifier.uri.fsPath。
+    本文をレコードに _msgs として持つ (virtual path ゆえ後から再読込できない)。多端末 cwd 混在に注意。
+- copilot: 同じ GitHub Copilot の 2 surface を CP に統合 (由来で区別)。
+    - CP/panel|editor… = VS Code 拡張: <Code>/User/workspaceStorage/<hash>/chatSessions/<id>.{json,jsonl}
+      (v3。.jsonl は kind:0 base + kind:1/2 パッチの追記ログ → 復元)。cwd=workspace.json の folder URI。
+    - CP/cli = Copilot CLI/coding agent: ~/.copilot/session-store.db の sessions で列挙、本文は
+      ~/.copilot/session-state/<id>/events.jsonl (user.message/assistant.message の data.content)。
+      cwd は使い捨て worktree ゆえ repository があれば 'gh:<owner/repo>' を WS にする。
+  ※ エディタ系パスは _editor_user_dir() で OS 分岐 (mac/Win/Linux)。
 
 mtime は Dropbox 同期で揃い当てにならないので使わない (開始時刻は中身の timestamp)。
 """
 import argparse
+import base64
 import contextlib
 import datetime
+import glob
 import io
 import json
 import os
@@ -26,10 +38,31 @@ import sqlite3
 import subprocess
 import sys
 import unicodedata
+import urllib.parse
 
 HOME = os.path.expanduser("~")
 CLAUDE_PROJECTS = os.path.join(HOME, ".claude", "projects")
 CODEX_DB = os.path.join(HOME, ".codex", "sqlite", "state_5.sqlite")
+
+
+def _editor_user_dir(app):
+    """VS Code (=Copilot) / Cursor の User 設定ディレクトリ (OS 別)。schema は OS 共通。"""
+    if sys.platform == "darwin":
+        return os.path.join(HOME, "Library", "Application Support", app, "User")
+    if sys.platform.startswith("win"):
+        return os.path.join(os.environ.get("APPDATA", os.path.join(HOME, "AppData", "Roaming")), app, "User")
+    return os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.join(HOME, ".config")), app, "User")
+
+
+# copilot = VS Code (Code)、cursor = Cursor。chat 履歴の格納先。
+CODE_WS = os.path.join(_editor_user_dir("Code"), "workspaceStorage")
+CODE_EMPTYWIN = os.path.join(_editor_user_dir("Code"), "globalStorage", "emptyWindowChatSessions")
+CURSOR_DB = os.path.join(_editor_user_dir("Cursor"), "globalStorage", "state.vscdb")
+CODE_DB = os.path.join(_editor_user_dir("Code"), "globalStorage", "state.vscdb")
+# Copilot CLI / coding agent (VS Code 拡張とは別 surface、同じ GitHub Copilot)。OS 共通 ~/.copilot。
+COPILOT_CLI_DB = os.path.join(HOME, ".copilot", "session-store.db")
+COPILOT_CLI_STATE = os.path.join(HOME, ".copilot", "session-state")
+COPILOT_CLI_DATA_DB = os.path.join(HOME, ".copilot", "data.db")  # desktop app: workspaces.archived_at
 
 UTC = datetime.timezone.utc
 
@@ -96,6 +129,21 @@ def pad(s, w):
 
 def rpad(s, w):
     return " " * max(0, w - vwidth(s)) + s
+
+
+def clip(s, w):
+    """display 幅 w (全角=2) に収め、超えたら末尾を … で切る (列はみ出し防止)。"""
+    s = s or ""
+    if vwidth(s) <= w:
+        return s
+    out, cur = "", 0
+    for ch in s:
+        cw = 2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1
+        if cur + cw > w - 1:
+            break
+        out += ch
+        cur += cw
+    return out + "…"
 
 
 def human_size(n):
@@ -195,35 +243,63 @@ def ws_letter(i):
 
 
 # ---------- claude ----------
+_CLAUDE_KEYS = ('"timestamp"', '"customTitle"', '"aiTitle"', '"entrypoint"', '"cwd"', '"model"')
+# 大きい jsonl は全読みせず head+tail だけ読む (start は先頭・end/title/model は末尾優先)。
+# 587MB 級の 1 ファイルが census 全体の主コスト。閾値以下は全読み (端から端まで安全)。
+_SCAN_HEAD = 256 * 1024
+_SCAN_TAIL = 256 * 1024
+
+
 def _scan_claude_meta(path):
-    """1 jsonl から (start, end, customTitle, aiTitle, entrypoint, cwd) を抽出.
-    start=最初の timestamp, end=最後の timestamp (最終活動)。substring で json.loads を間引く."""
-    start = end = ct = at = ep = cwd = None
+    """1 jsonl から (start, end, customTitle, aiTitle, entrypoint, cwd, model) を抽出。
+    start=最初の timestamp / end=最後の timestamp / model=最後の message.model (<synthetic> 除く)。
+    巨大ファイルは head+tail のみ読む高速版 (中央のみに在る title/model は稀に取りこぼす)。"""
+    acc = {"start": None, "end": None, "ct": None, "at": None, "ep": None, "cwd": None, "model": None}
+
+    def feed(line):
+        if not any(k in line for k in _CLAUDE_KEYS):
+            return
+        try:
+            o = json.loads(line)
+        except json.JSONDecodeError:
+            return
+        if o.get("timestamp"):
+            if acc["start"] is None:
+                acc["start"] = o["timestamp"]
+            acc["end"] = o["timestamp"]
+        if o.get("customTitle"):
+            acc["ct"] = o["customTitle"]
+        if o.get("aiTitle"):
+            acc["at"] = o["aiTitle"]
+        if acc["ep"] is None and o.get("entrypoint"):
+            acc["ep"] = o["entrypoint"]
+        if acc["cwd"] is None and o.get("cwd"):
+            acc["cwd"] = o["cwd"]
+        m = o.get("message")
+        if isinstance(m, dict) and m.get("model") and m["model"] != "<synthetic>":
+            acc["model"] = m["model"]
+
     try:
-        f = open(path, encoding="utf-8")
+        size = os.path.getsize(path)
+        # seek 後の mid-char クラッシュを避けるため errors='replace'
+        with open(path, encoding="utf-8", errors="replace") as f:
+            if size <= _SCAN_HEAD + _SCAN_TAIL:
+                for line in f:
+                    feed(line)
+            else:
+                read = 0
+                for line in f:  # head
+                    feed(line)
+                    read += len(line)
+                    if read >= _SCAN_HEAD:
+                        break
+                f.seek(max(0, size - _SCAN_TAIL))
+                f.readline()  # seek 直後の部分行は捨てる
+                for line in f:  # tail
+                    feed(line)
     except OSError:
         return None
-    with f:
-        for line in f:
-            if not any(k in line for k in ('"timestamp"', '"customTitle"', '"aiTitle"', '"entrypoint"', '"cwd"')):
-                continue
-            try:
-                o = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if o.get("timestamp"):
-                if start is None:
-                    start = o["timestamp"]
-                end = o["timestamp"]
-            if o.get("customTitle"):
-                ct = o["customTitle"]
-            if o.get("aiTitle"):
-                at = o["aiTitle"]
-            if ep is None and o.get("entrypoint"):
-                ep = o["entrypoint"]
-            if cwd is None and o.get("cwd"):
-                cwd = o["cwd"]
-    return start, end, ct, at, ep, cwd
+    return (acc["start"], acc["end"], acc["ct"], acc["at"], acc["ep"], acc["cwd"], acc["model"])
 
 
 def _dir_cwd(d):
@@ -242,12 +318,45 @@ def _dir_cwd(d):
     return None
 
 
+def _vscdb_hidden(db_path):
+    """エディタの state.vscdb から Claude Code 拡張の hiddenSessionIds (ゴミ箱/非表示) を集合で返す。
+    ItemTable の key='Anthropic.claude-code' の JSON 値内。read-only・単一キー索引引きで軽い。"""
+    con = _ro_connect(db_path)
+    if con is None:
+        return set()
+    try:
+        row = con.execute("select value from ItemTable where key='Anthropic.claude-code'").fetchone()
+    except sqlite3.Error:
+        row = None
+    finally:
+        con.close()
+    if not row or not row[0]:
+        return set()
+    try:
+        return set(json.loads(row[0]).get("hiddenSessionIds") or [])
+    except (json.JSONDecodeError, TypeError):
+        return set()
+
+
+_HIDDEN_CACHE = None
+
+
+def _claude_hidden():
+    """(Cursor で hidden の id 集合, VS Code で hidden の id 集合)。プロセス内 1 回だけ読む。
+    hidden は per-editor (Cursor と VS Code で独立)。本体 jsonl は消えないので chat-list は印付けに使う。"""
+    global _HIDDEN_CACHE
+    if _HIDDEN_CACHE is None:
+        _HIDDEN_CACHE = (_vscdb_hidden(CURSOR_DB), _vscdb_hidden(CODE_DB))
+    return _HIDDEN_CACHE
+
+
 def iter_claude_sessions(pred=None):
     """pred(cwd)->bool で絞る。pred=None なら全件。
     encoded dir 直下の `*.jsonl` だけが top-level セッション。subagent の sidechain は
     `<dir>/<sessionId>/subagents/agent-*.jsonl` と入れ子なので os.listdir(1 階層) では拾わない."""
     if not os.path.isdir(CLAUDE_PROJECTS):
         return
+    cur_h, vs_h = _claude_hidden()
     for dn in os.listdir(CLAUDE_PROJECTS):
         d = os.path.join(CLAUDE_PROJECTS, dn)
         if not os.path.isdir(d):
@@ -263,33 +372,59 @@ def iter_claude_sessions(pred=None):
             meta = _scan_claude_meta(os.path.join(d, fn))
             if meta is None:
                 continue
-            start, end, ct, at, ep, cwd = meta
+            start, end, ct, at, ep, cwd, model = meta
             if pred is not None and (cwd is None or not pred(cwd)):
                 continue
             fp = os.path.join(d, fn)
+            sid = fn[:-6]
+            hc, hv = sid in cur_h, sid in vs_h  # Cursor/VS Code で hidden か (per-editor)
+            mark = ("*" + ("c" if hc else "") + ("v" if hv else "")) if (hc or hv) else ""
             yield {
-                "id": fn[:-6],
+                "id": sid,
                 "harness": "claude",
                 "origin": (ep or "?").replace("claude-", ""),
+                "model": model,
                 "start": to_dt(start),
                 "updated": to_dt(end),
                 "title": ct or at or "",
                 "cwd": cwd,
                 "path": fp,
                 "bytes": _filesize(fp),
-                "archived": False,
+                "archived": hc or hv,   # short の * 用 (OR)
+                "_archmark": mark,      # long の *c/*v/*cv 用
             }
+
+
+# ---------- read-only sqlite open (WAL 堅牢化) ----------
+def _ro_connect(db_path, timeout=5):
+    """sqlite を read-only で開く共通入口。まず `mode=ro`、失敗したら `immutable=1` にフォールバック。
+    理由: WAL モードの db を、所有アプリ終了後 (-wal/-shm 不在) に `mode=ro` で開くと
+    'unable to open database file' になる。その時は WAL が本体へチェックポイント済み=本体が完全なので
+    `immutable=1` (WAL を介さず本体直読み) で正しく読める。アプリ起動中は `mode=ro` が成功し WAL の
+    最新を読むので、immutable は使われない (起動中に immutable を使うと未反映の本体を読む罠を避ける)。
+    pathlib.as_uri() で OS 非依存の file:// URI (Windows のバックスラッシュ/ドライブ対策)。"""
+    if not os.path.exists(db_path):
+        return None
+    uri = pathlib.Path(db_path).as_uri()
+    for q in ("?mode=ro", "?immutable=1"):
+        con = None
+        try:
+            con = sqlite3.connect(uri + q, uri=True, timeout=timeout)
+            con.execute("select count(*) from sqlite_master")  # 実読み検査: mode=ro は WAL db で
+            return con                                          # connect は通っても execute で 'unable to open' になる
+        except sqlite3.OperationalError:
+            if con is not None:
+                try:
+                    con.close()
+                except sqlite3.Error:
+                    pass
+            continue
+    return None
 
 
 # ---------- codex ----------
 def _codex_conn():
-    if not os.path.exists(CODEX_DB):
-        return None
-    try:
-        # pathlib.as_uri() で OS 非依存の file:// URI を作る (Windows のバックスラッシュ/ドライブ対策)
-        return sqlite3.connect(pathlib.Path(CODEX_DB).as_uri() + "?mode=ro", uri=True, timeout=5)
-    except sqlite3.OperationalError:
-        return None
+    return _ro_connect(CODEX_DB)
 
 
 def iter_codex_sessions(pred=None, include_subagents=False, include_archived=False):
@@ -318,6 +453,474 @@ def iter_codex_sessions(pred=None, include_subagents=False, include_archived=Fal
             "path": rp,
             "bytes": _filesize(rp),
             "archived": bool(archived),
+            "_archmark": "*" if archived else "",  # codex は editor 区別なし → 素の *
+        }
+
+
+# ---------- copilot / cursor 共通: epoch ミリ秒・ISO の時刻 ----------
+def _ms_to_dt(ms):
+    """epoch ミリ秒 -> aware datetime(UTC)。codex/claude の to_dt は秒なので別に持つ。"""
+    if ms is None:
+        return None
+    try:
+        return datetime.datetime.fromtimestamp(ms / 1000.0, UTC)
+    except (TypeError, ValueError, OSError):
+        return None
+
+
+def _iso_to_dt(s):
+    if not s or not isinstance(s, str):
+        return None
+    try:
+        return datetime.datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+# ---------- copilot (VS Code chat schema v3, workspaceStorage の json) ----------
+def _code_ws_cwd(ws_hash_dir):
+    """workspaceStorage/<hash> -> 実フォルダ。'folder'(単一)or 'workspace'(multi-root,.code-workspace)。"""
+    try:
+        d = json.load(open(os.path.join(ws_hash_dir, "workspace.json"), encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    uri = d.get("folder") or d.get("workspace")
+    if not uri:
+        return None
+    if uri.startswith("file://"):
+        return _strip_ws_file(urllib.parse.unquote(urllib.parse.urlparse(uri).path))
+    if uri.startswith("vscode-remote://"):
+        # 例 vscode-remote://ssh-remote%2Buchiha/home/.../x.code-workspace -> '[uchiha] /home/.../x'
+        pp = urllib.parse.urlparse(uri)
+        host = urllib.parse.unquote(pp.netloc)
+        host = host[len("ssh-remote+"):] if host.startswith("ssh-remote+") else host
+        return f"[{host}] {_strip_ws_file(urllib.parse.unquote(pp.path))}"
+    return uri  # その他のスキームはそのまま
+
+
+def _strip_ws_file(p):
+    """multi-root の <proj>/.vscode/<name>.code-workspace を実プロジェクト dir に正規化。"""
+    if p.endswith(".code-workspace"):
+        parent = os.path.dirname(p)
+        return os.path.dirname(parent) if os.path.basename(parent) == ".vscode" else parent
+    return p
+
+
+def _copilot_msgs(d):
+    """VS Code chat json の requests[] -> [(role,text)]。"""
+    out = []
+    for req in (d.get("requests") or []):
+        u = ((req.get("message") or {}).get("text") or "").strip()
+        if u:
+            out.append(("user", u))
+        parts = [p["value"] for p in (req.get("response") or [])
+                 if isinstance(p, dict) and isinstance(p.get("value"), str)
+                 and p.get("kind") in (None, "markdownContent")]
+        a = "\n".join(parts).strip()
+        if a:
+            out.append(("assistant", a))
+    return out
+
+
+def _copilot_load(path):
+    """copilot chat session を v3 構造の dict にして返す。2 形式に対応:
+    - 旧 .json : v3 単一オブジェクト (requests[], creationDate, customTitle, initialLocation…)
+    - 新 .jsonl: kind:0 の base + kind:1/2 の JSON パッチ (k=パス, v=値) の追記ログ → 適用して復元。
+    どちらも同じ v3 dict になるので以降の抽出は共通。"""
+    try:
+        if not path.endswith(".jsonl"):
+            return json.load(open(path, encoding="utf-8"))
+        base = {}
+        for line in open(path, encoding="utf-8", errors="replace"):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                o = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if o.get("kind") == 0:
+                base = o.get("v") or {}
+                continue
+            k = o.get("k")
+            if not k:
+                continue
+            cur, ok = base, True
+            for key in k[:-1]:  # 末尾手前までナビゲート
+                if isinstance(key, int):
+                    if isinstance(cur, list) and 0 <= key < len(cur):
+                        cur = cur[key]
+                    else:
+                        ok = False
+                        break
+                elif isinstance(cur, dict):
+                    cur = cur.setdefault(key, {})
+                else:
+                    ok = False
+                    break
+            if ok:
+                try:
+                    cur[k[-1]] = o.get("v")  # 末尾キー/インデックスに値を set
+                except (TypeError, IndexError, KeyError):
+                    pass
+        return base
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def copilot_messages(path):
+    d = _copilot_load(path)
+    return _copilot_msgs(d) if d else []
+
+
+def _copilot_archived_ids(ws_hash_dir):
+    """その WS の state.vscdb の agentSessions.state.cache から archived の sessionId 集合。
+    entry: {resource:'vscode-chat-session://local/<base64(sessionId)>', archived:true}。base64 デコードで id 化。"""
+    con = _ro_connect(os.path.join(ws_hash_dir, "state.vscdb"))
+    if con is None:
+        return set()
+    try:
+        row = con.execute("select value from ItemTable where key='agentSessions.state.cache'").fetchone()
+    except sqlite3.Error:
+        return set()
+    finally:
+        con.close()
+    if not row or not row[0]:
+        return set()
+    out = set()
+    try:
+        for e in json.loads(row[0]):
+            if not (isinstance(e, dict) and e.get("archived")):
+                continue
+            b = (e.get("resource") or "").split("/local/")[-1]
+            if b:
+                try:
+                    out.add(base64.b64decode(b + "=" * (-len(b) % 4)).decode("utf-8", "replace"))
+                except (ValueError, UnicodeDecodeError):
+                    pass
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return out
+
+
+def iter_copilot_sessions(pred=None):
+    roots = []  # (chatSessions の親, cwd, wsd)
+    if os.path.isdir(CODE_WS):
+        for h in os.listdir(CODE_WS):
+            wsd = os.path.join(CODE_WS, h)
+            roots.append((os.path.join(wsd, "chatSessions"), _code_ws_cwd(wsd), wsd))
+    roots.append((CODE_EMPTYWIN, None, None))  # workspace なしの会話 (空なら自然に skip)
+    for cs_dir, cwd, wsd in roots:
+        if pred is not None and (cwd is None or not pred(cwd)):
+            continue
+        archived_ids = _copilot_archived_ids(wsd) if wsd else set()
+        # 旧 .json と 新 .jsonl の両方
+        for path in glob.glob(os.path.join(cs_dir, "*.json")) + glob.glob(os.path.join(cs_dir, "*.jsonl")):
+            d = _copilot_load(path)
+            if not d:
+                continue
+            reqs = d.get("requests") or []
+            if not reqs:
+                continue  # 空セッション
+            ts = [r.get("timestamp") for r in reqs if r.get("timestamp")]
+            title = d.get("customTitle") or ""
+            if not title:
+                for r in reqs:
+                    t = ((r.get("message") or {}).get("text") or "").strip()
+                    if t:
+                        title = t.splitlines()[0][:80]
+                        break
+            model = next((r.get("modelId") for r in reqs if r.get("modelId")), None)
+            stem = os.path.basename(path).rsplit(".", 1)[0]
+            sid = d.get("sessionId") or stem
+            yield {
+                "id": sid,
+                "harness": "copilot",
+                "origin": d.get("initialLocation") or "",  # 由来=panel/editor/terminal 等
+                "model": model,  # modelId (例 copilot/gpt-5-mini) → --long でモデル列
+                "start": _ms_to_dt(min(ts) if ts else d.get("creationDate")),
+                "updated": _ms_to_dt(max(ts) if ts else d.get("lastMessageDate")),
+                "title": title,
+                "cwd": cwd,
+                "path": path,
+                "bytes": _filesize(path),
+                "archived": sid in archived_ids,  # agentSessions.state.cache[].archived
+                "_archmark": "*" if sid in archived_ids else "",  # editor 区別なし → 素の *
+            }
+
+
+# ---------- copilot CLI / coding agent (~/.copilot) ----------
+def _copilot_cli_events(sid):
+    return os.path.join(COPILOT_CLI_STATE, sid, "events.jsonl")
+
+
+def copilot_cli_messages(path):
+    """events.jsonl の user.message / assistant.message の data.content -> [(role,text)]。"""
+    out = []
+    try:
+        for line in open(path, encoding="utf-8", errors="replace"):
+            try:
+                o = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            t = o.get("type")
+            if t in ("user.message", "assistant.message"):
+                c = (o.get("data") or {}).get("content")
+                if c and c.strip():
+                    out.append(("user" if t == "user.message" else "assistant", c.strip()))
+    except OSError:
+        pass
+    return out
+
+
+def _copilot_cli_model(path):
+    """events.jsonl head から assistant.message.data.model を拾う (--long の遅延取得)。"""
+    try:
+        for i, line in enumerate(open(path, encoding="utf-8", errors="replace")):
+            if i > 80:
+                break
+            if '"model"' not in line:
+                continue
+            try:
+                o = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if o.get("type") == "assistant.message":
+                m = (o.get("data") or {}).get("model")
+                if m:
+                    return m
+    except OSError:
+        return None
+    return None
+
+
+def _git_origin_owner_repo(cfg_path):
+    """`.git/config` の origin url から 'owner/repo' を取る (github の git@/https 両対応)。"""
+    try:
+        txt = open(cfg_path, encoding="utf-8", errors="replace").read()
+    except OSError:
+        return None
+    in_origin, url = False, None
+    for line in txt.splitlines():
+        s = line.strip()
+        if s.startswith("["):
+            in_origin = s.replace(" ", "").lower() == '[remote"origin"]'
+        elif in_origin and s.startswith("url") and "=" in s:
+            url = s.split("=", 1)[1].strip()
+            break
+    if not url:
+        return None
+    for sep in ("github.com:", "github.com/"):
+        if sep in url:
+            tail = url.split(sep, 1)[1]
+            tail = tail[:-4] if tail.endswith(".git") else tail
+            parts = tail.rstrip("/").split("/")
+            if len(parts) >= 2:
+                return f"{parts[0]}/{parts[1]}"
+    return None
+
+
+_REPO_MAP_CACHE = None
+
+
+def _repo_remote_map():
+    """{<owner/repo>: <ローカル repo パス>}。Copilot CLI の gh:repo を同 remote のローカルクローンへ
+    対応づけ WS を統合するため。ローカル cwd (codex threads / editor / claude) を集め .git/config を読む。1 回キャッシュ。"""
+    global _REPO_MAP_CACHE
+    if _REPO_MAP_CACHE is not None:
+        return _REPO_MAP_CACHE
+    paths = set()
+    con = _codex_conn()
+    if con is not None:
+        try:
+            for (c,) in con.execute("select distinct cwd from threads"):
+                if c:
+                    paths.add(c)
+        except sqlite3.Error:
+            pass
+        con.close()
+    if os.path.isdir(CODE_WS):
+        for h in os.listdir(CODE_WS):
+            c = _code_ws_cwd(os.path.join(CODE_WS, h))
+            if c and not c.startswith(("[", "gh:")):
+                paths.add(c)
+    if os.path.isdir(CLAUDE_PROJECTS):
+        for dn in os.listdir(CLAUDE_PROJECTS):
+            c = _dir_cwd(os.path.join(CLAUDE_PROJECTS, dn))
+            if c:
+                paths.add(c)
+    m = {}
+    for p in paths:
+        owner_repo = _git_origin_owner_repo(os.path.join(os.path.expanduser(p), ".git", "config"))
+        if owner_repo and owner_repo not in m:
+            m[owner_repo] = ws_path(p)
+    _REPO_MAP_CACHE = m
+    return m
+
+
+def _copilot_cli_archived_ids():
+    """Copilot desktop app の data.db workspaces.archived_at が非 None の session_id 集合。
+    archive はこのローカル DB に保存される (before/after 実験で確定)。mode=ro で WAL も見える。"""
+    con = _ro_connect(COPILOT_CLI_DATA_DB)
+    if con is None:
+        return set()
+    try:
+        rows = con.execute("select session_id, archived_at from workspaces").fetchall()
+    except sqlite3.Error:
+        return set()
+    finally:
+        con.close()
+    return {sid for sid, arch in rows if sid and arch}
+
+
+def iter_copilot_cli_sessions(pred=None):
+    """Copilot CLI / coding agent。session-store.db の sessions で列挙 (本文は events.jsonl)。
+    cwd は使い捨て worktree。repository が同 remote のローカルクローンに対応すればその WS に統合、
+    無ければ 'gh:<owner/repo>'、repository 自体無ければ cwd。
+    archive は data.db workspaces.archived_at (session_id 紐付け)。"""
+    con = _ro_connect(COPILOT_CLI_DB)
+    if con is None:
+        return
+    repo_map = _repo_remote_map()
+    archived_ids = _copilot_cli_archived_ids()
+    try:
+        rows = con.execute(
+            "select id, cwd, repository, summary, created_at, updated_at from sessions").fetchall()
+    except sqlite3.Error:
+        return
+    finally:
+        con.close()
+    for sid, cwd, repo, summary, created, updated in rows:
+        if repo and repo in repo_map:
+            ws = repo_map[repo]      # 同 remote のローカルクローンへ統合 (gh:repo を local path に)
+        elif repo:
+            ws = f"gh:{repo}"        # ローカルクローンが無い repo はそのまま gh: 表示
+        else:
+            ws = cwd                 # repository 不明は cwd (~/.copilot/chats/...)
+        if pred is not None and (ws is None or not pred(ws)):
+            continue
+        ev = _copilot_cli_events(sid)
+        yield {
+            "id": sid,
+            "harness": "copilot",
+            "origin": "cli",  # 由来=cli (VS Code 拡張は panel/editor)。同じ CP harness
+            "model": None,    # --long で events.jsonl から遅延取得
+            "start": _iso_to_dt(created),
+            "updated": _iso_to_dt(updated),
+            "title": summary or "",
+            "cwd": ws,
+            "path": ev,
+            "bytes": _filesize(ev),
+            "archived": sid in archived_ids,  # data.db workspaces.archived_at
+            "_archmark": "*" if sid in archived_ids else "",
+            "_kind": "cli",     # messages_of / model 取得の分岐用
+        }
+
+
+# ---------- cursor (globalStorage/state.vscdb, cursorDiskKV) ----------
+def _cursor_conn():
+    """live state.vscdb を read-only で開く (_ro_connect: mode=ro→immutable=1 フォールバック)。
+    Cursor 起動中は mode=ro が WAL を尊重、終了後は immutable で本体を読む。コピー不要・lock しない。"""
+    return _ro_connect(CURSOR_DB)
+
+
+def _cursor_cwd(comp):
+    ws = comp.get("workspaceIdentifier")
+    if isinstance(ws, dict) and isinstance(ws.get("uri"), dict):
+        return ws["uri"].get("fsPath") or ws["uri"].get("path")
+    return None
+
+
+def _cursor_subagent_ids(comps):
+    """親 composer の subagentComposerIds / subComposerIds に現れる id 集合 (= subagent 会話)。"""
+    sub = set()
+    for d in comps.values():
+        for fld in ("subagentComposerIds", "subComposerIds"):
+            for x in (d.get(fld) or []):
+                if isinstance(x, str):
+                    sub.add(x)
+                elif isinstance(x, dict) and x.get("composerId"):
+                    sub.add(x["composerId"])
+    return sub
+
+
+def iter_cursor_sessions(pred=None, include_subagents=False):
+    con = _cursor_conn()
+    if con is None:
+        return
+    try:
+        comps = {}
+        for k, v in con.execute("select key,value from cursorDiskKV where key like 'composerData:%'"):
+            if v is None:
+                continue
+            try:
+                dd = json.loads(v)
+            except (json.JSONDecodeError, TypeError):
+                continue
+            comps[dd.get("composerId") or k.split(":", 1)[1]] = dd
+        subagents = _cursor_subagent_ids(comps)
+        archived_ids = set()  # composer.composerHeaders の isArchived=true (= Cursor native の削除/archive)
+        try:
+            hrow = con.execute("select value from ItemTable where key='composer.composerHeaders'").fetchone()
+            if hrow and hrow[0]:
+                for c in (json.loads(hrow[0]).get("allComposers") or []):
+                    if isinstance(c, dict) and c.get("isArchived") and c.get("composerId"):
+                        archived_ids.add(c["composerId"])
+        except (sqlite3.Error, json.JSONDecodeError, TypeError):
+            pass
+        bubbles = {}
+        for k, v in con.execute("select key,value from cursorDiskKV where key like 'bubbleId:%'"):
+            if v is None:
+                continue
+            parts = k.split(":")
+            if len(parts) < 3:
+                continue
+            try:
+                bubbles.setdefault(parts[1], {})[parts[2]] = json.loads(v)
+            except (json.JSONDecodeError, TypeError):
+                continue
+    finally:
+        con.close()
+    for cid, comp in comps.items():
+        is_sub = cid in subagents
+        if is_sub and not include_subagents:
+            continue  # cursor の subagent 会話は既定で除外 (codex と同方針)
+        cwd = _cursor_cwd(comp)
+        if pred is not None and (cwd is None or not pred(cwd)):
+            continue
+        headers = comp.get("fullConversationHeadersOnly") or []
+        bd = bubbles.get(cid, {})
+        msgs = []
+        for h in headers:
+            b = bd.get(h.get("bubbleId"))
+            if not b:
+                continue
+            t = (b.get("text") or "").strip()
+            if t:
+                msgs.append(("user" if b.get("type") == 1 else "assistant", t))
+        if not msgs:
+            continue  # tool/diff/thinking のみ = human-visible text 無し
+        start = _ms_to_dt(comp.get("createdAt"))
+        hdr = [t for t in (_iso_to_dt(h.get("createdAt")) for h in headers) if t]
+        if hdr:
+            cand = min(hdr)
+            if start is None or cand < start:
+                start = cand
+        mc = comp.get("modelConfig") or {}
+        yield {
+            "id": cid,
+            "harness": "cursor",
+            "origin": "subagent" if is_sub else "cursor",  # CU/cursor (surface 情報がデータに無い) / CU/subagent
+            "model": (mc.get("modelName") if isinstance(mc, dict) else None),
+            "start": start,
+            "updated": _ms_to_dt(comp.get("lastUpdatedAt")),
+            "title": comp.get("name") or msgs[0][1].splitlines()[0][:80],
+            "cwd": cwd,
+            "path": f"cursorDiskKV:composerData:{cid}",  # virtual (DB-backed)
+            "bytes": sum(len(t) for _, t in msgs),  # 本文長で近似 (ファイル無し)
+            "archived": cid in archived_ids,  # composer.composerHeaders.isArchived
+            "_archmark": "*" if cid in archived_ids else "",  # editor 区別なし → 素の *
+            "_msgs": msgs,  # virtual path ゆえ本文をレコードに同梱
         }
 
 
@@ -367,10 +970,44 @@ def codex_messages(path):
     return out
 
 
+def _codex_model(rollout_path, _maxlines=60):
+    """codex rollout jsonl の head から payload.model を拾う (turn_context は先頭付近)。
+    --long 表示時のみ遅延で呼ぶ (全行は読まない)。"""
+    if not rollout_path or not os.path.exists(rollout_path):
+        return None
+    try:
+        with open(rollout_path, encoding="utf-8", errors="replace") as f:
+            for i, line in enumerate(f):
+                if i >= _maxlines:
+                    break
+                if '"model"' not in line:
+                    continue
+                try:
+                    o = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                pl = o.get("payload")
+                if isinstance(pl, dict) and isinstance(pl.get("model"), str):
+                    return pl["model"]
+    except OSError:
+        return None
+    return None
+
+
 def messages_of(rec):
+    # cursor は virtual path (DB-backed)。本文は列挙時にレコードへ同梱済み。
+    if rec.get("_msgs") is not None:
+        return rec["_msgs"]
     if not rec["path"] or not os.path.exists(rec["path"]):
         return []
-    return claude_messages(rec["path"]) if rec["harness"] == "claude" else codex_messages(rec["path"])
+    h = rec["harness"]
+    if h == "claude":
+        return claude_messages(rec["path"])
+    if h == "codex":
+        return codex_messages(rec["path"])
+    if h == "copilot":
+        return copilot_cli_messages(rec["path"]) if rec.get("_kind") == "cli" else copilot_messages(rec["path"])
+    return []
 
 
 def text_lines(rec):
@@ -407,7 +1044,12 @@ def collect(args, pred):
     if args.tool in (None, "claude"):
         recs += list(iter_claude_sessions(pred))
     if args.tool in (None, "codex"):
-        recs += list(iter_codex_sessions(pred, args.include_subagents, args.include_archived))
+        recs += list(iter_codex_sessions(pred, args.include_subagents, include_archived=True))
+    if args.tool in (None, "cursor"):
+        recs += list(iter_cursor_sessions(pred, args.include_subagents))
+    if args.tool in (None, "copilot"):
+        recs += list(iter_copilot_sessions(pred))
+        recs += list(iter_copilot_cli_sessions(pred))
     # 重複排除: 同一セッションが複数 dir に物理コピーされている場合がある
     # (フォルダ rename / Dropbox 同期)。(harness, 完全 id) で束ね、最も完全な (大きい) コピーを残す。
     best = {}
@@ -435,8 +1077,11 @@ def collect(args, pred):
     return recs
 
 
+_HARNESS_PREFIX = {"claude": "CC/", "codex": "CX/", "cursor": "CU/", "copilot": "CP/"}
+
+
 def origin_label(rec):
-    return ("CC/" if rec["harness"] == "claude" else "CX/") + rec["origin"]
+    return _HARNESS_PREFIX.get(rec["harness"], "?/") + rec["origin"]
 
 
 _MIN_DT = datetime.datetime.min.replace(tzinfo=UTC)
@@ -492,24 +1137,51 @@ def cmd_list(args, pred):
         print(json.dumps([{**r, "ws": letters[_ws_key(r)]} for r in recs],
                          ensure_ascii=False, indent=1, default=_json_default))
         return
-    cc = sum(1 for r in recs if r["harness"] == "claude")
-    cx = sum(1 for r in recs if r["harness"] == "codex")
+    n = {h: sum(1 for r in recs if r["harness"] == h) for h in ("claude", "codex", "cursor", "copilot")}
     print("# chat-list  対象 WS:")
     if order:
         for k, cwd in order:
             print(f"#   {letters[k]}  {(ws_path(cwd) or '(不明)').replace(_HOME_DISP, '~')}  ({counts[k]}本)")
     else:
         print("#   (該当なし)")
-    print(f"# 計 {len(recs)} 本 (claude {cc} + codex {cx})  ソート: {_list_sort_label(args.sort, args.reverse)}")
-    if args.include_archived:
-        print("# 由来末尾 * = archived (codex)")
+    na = sum(1 for r in recs if r["archived"])
+    print(f"# 計 {len(recs)} 本 (claude {n['claude']} + codex {n['codex']} + cursor {n['cursor']} "
+          f"+ copilot {n['copilot']})  ソート: {_list_sort_label(args.sort, args.reverse)}")
+    if na:
+        if args.long:
+            print(f"# 由来末尾 * = archived/hidden ({na} 本)。codex/cursor/copilot=* / "
+                  "claude=*c(Cursor) *v(VS Code) *cv(両方)")
+        else:
+            print(f"# 由来末尾 * = archived/hidden ({na} 本。--long で claude の Cursor/VS Code 別が出る)")
     print()
-    print(pad("#", 4) + pad(f"開始({TZLABEL})", 17) + pad("由来", 15) + pad("ID", 10)
-          + rpad("サイズ", 6) + "  " + "タイトル")
+    # 由来列の表示文字列 (WSラベル + 由来 + archive 記号) を先に作り、列幅は実データの最大に合わせる。
+    # short: 素の '*' / long: '*c/*v/*cv' (claude) ・ '*' (codex)。記号は除外ではなく印のみ。
+    odisp = []
+    for r in recs:
+        o = f"{letters[_ws_key(r)]} {origin_label(r)}"
+        o += (r.get("_archmark", "") if args.long else ("*" if r["archived"] else ""))
+        odisp.append(o)
+    ow = max([vwidth("由来")] + [vwidth(o) for o in odisp])
+    # モデル列は --long の時だけ。幅は実際に出すモデル名の最大に合わせる (固定広幅にしない)。
+    models, mw = None, 0
+    if args.long:
+        models = []
+        for r in recs:
+            m = r.get("model")
+            if not m and r["harness"] == "codex":  # codex は rollout head から遅延取得
+                m = _codex_model(r["path"])
+            if not m and r.get("_kind") == "cli":  # copilot CLI は events.jsonl から遅延取得
+                m = _copilot_cli_model(r["path"])
+            models.append(m or "-")
+        mw = min(34, max([vwidth("モデル")] + [vwidth(m) for m in models]))
+    mhead = pad("モデル", mw + 1) if args.long else ""
+    print(pad("#", 4) + pad(f"開始({TZLABEL})", 17) + pad("由来", ow + 1) + mhead
+          + pad("ID", 10) + rpad("サイズ", 6) + "  " + "タイトル")
     for i, r in enumerate(recs, 1):
-        origin = f"{letters[_ws_key(r)]} {origin_label(r)}" + ("*" if r["archived"] else "")
-        print(pad(str(i), 4) + pad(loc_str(r["start"]), 17) + pad(origin, 15)
-              + pad(r["id"][:8], 10) + rpad(human_size(r["bytes"]), 6) + "  " + r["title"][:50])
+        mcol = pad(clip(models[i - 1], mw), mw + 1) if args.long else ""
+        print(pad(str(i), 4) + pad(loc_str(r["start"]), 17) + pad(odisp[i - 1], ow + 1)
+              + mcol + pad(r["id"][:8], 10)
+              + rpad(human_size(r["bytes"]), 6) + "  " + r["title"][:50])
         if r.get("_match"):  # --grep の一致行を優先表示
             for ln in r["_match"]:
                 print(f"      ┊ {ln[:96]}")
@@ -523,38 +1195,48 @@ def cmd_list(args, pred):
 # ---------- 出力: WS 一覧 ----------
 def cmd_workspaces(args, pred=None):
     # census は一覧と同じ列挙 (per-session cwd + (harness,id) dedup) で作る → 表示と整合。
-    # archived も常に数え (active=cx / archived=cxa)、subagent だけ除外。
+    # archived/hidden も現役として計に算入。別途その本数を 計 の括弧で示す。subagent だけ除外。
     recs = []
     if args.tool in (None, "claude"):
         recs += list(iter_claude_sessions(None))
     if args.tool in (None, "codex"):
         recs += list(iter_codex_sessions(None, args.include_subagents, include_archived=True))
+    if args.tool in (None, "cursor"):
+        recs += list(iter_cursor_sessions(None, args.include_subagents))
+    if args.tool in (None, "copilot"):
+        recs += list(iter_copilot_sessions(None))
+        recs += list(iter_copilot_cli_sessions(None))
     best = {}
     for r in recs:
         key = (r["harness"], r["id"])
-        sz = _filesize(r["path"])
+        sz = r["bytes"]  # cursor は virtual path (filesize 不可) なのでレコードの bytes を使う
         if key not in best or sz > best[key][0]:
             best[key] = (sz, r)
 
-    agg = {}  # ws_key(cwd) -> dict(cc, cx, cxa, first, last, disp)
+    cntkey = {"claude": "cc", "codex": "cx", "cursor": "cu", "copilot": "cp"}
+    agg = {}  # ws_key(cwd) -> dict(cc, cx, cu, cp, arch, bytes, first, last, disp)
     for r in (v[1] for v in best.values()):
         if not r["cwd"]:
             continue
         if pred is not None and not pred(r["cwd"]):
             continue
         k = ws_key(r["cwd"])
-        a = agg.setdefault(k, {"cc": 0, "cx": 0, "cxa": 0, "bytes": 0, "first": None,
-                               "last": None, "disp": ws_path(r["cwd"])})
-        a["cc" if r["harness"] == "claude" else ("cxa" if r["archived"] else "cx")] += 1
-        a["bytes"] += max(r["bytes"], 0)  # WS の合計バイト数 (--sort size / サイズ列)
-        if r["start"]:  # first = 初回活動 (最古の開始)
+        a = agg.setdefault(k, {"cc": 0, "cx": 0, "cu": 0, "cp": 0, "arch": 0, "bytes": 0,
+                               "first": None, "last": None, "disp": ws_path(r["cwd"])})
+        a[cntkey[r["harness"]]] += 1   # archived/hidden も per-tool 総数に含める
+        if r["archived"]:
+            a["arch"] += 1             # OR で archive 印が付く本数 (計の括弧)
+        a["bytes"] += max(r["bytes"], 0)
+        if r["start"]:
             a["first"] = min(a["first"] or r["start"], r["start"])
         upd = r["updated"] or r["start"]
-        if upd:  # last = 最終活動 (最新の更新)
+        if upd:
             a["last"] = max(a["last"] or upd, upd)
 
+    def _total(a):
+        return a["cc"] + a["cx"] + a["cu"] + a["cp"]
+
     # 並べ替え (会話一覧と統一: 既定 time=初回活動、time/mtime とも新しい順、--reverse で反転)。
-    # time=初回活動(first) / mtime=最終活動(last) / size=合計バイト / count=本数 / name=path。
     items = list(agg.items())
     how = args.sort if args.sort in ("mtime", "size", "count", "name") else "time"
     if how == "mtime":
@@ -562,42 +1244,48 @@ def cmd_workspaces(args, pred=None):
     elif how == "size":
         keyf, desc = (lambda kv: kv[1]["bytes"]), True
     elif how == "count":
-        keyf, desc = (lambda kv: kv[1]["cc"] + kv[1]["cx"] + kv[1]["cxa"]), True
+        keyf, desc = (lambda kv: _total(kv[1])), True
     elif how == "name":
         keyf, desc = (lambda kv: kv[0]), False
     else:  # time = 初回活動 (first, 新しい順が既定)
         keyf, desc = (lambda kv: kv[1]["first"] or _MIN_DT), True
     items.sort(key=keyf, reverse=desc ^ args.reverse)
     if args.format == "json":
-        print(json.dumps([{"i": i, "cwd": v["disp"],
+        print(json.dumps([{"i": i, "cwd": v["disp"], "total": _total(v),
                            **{kk: (vv.isoformat() if isinstance(vv, datetime.datetime) else vv)
                               for kk, vv in v.items() if kk != "disp"}}
                           for i, (k, v) in enumerate(items, 1)],
                          ensure_ascii=False, indent=1))
         return
-    print(f"# chat-list --workspaces  ({len(items)} WS)   計=CC+CX(active)  CC=claude  CX=codex  "
-          "*=archived(codex)  サイズ=会話合計バイト")
+    print(f"# chat-list --workspaces  ({len(items)} WS)   計=CC+CX+CU+CP  計の (N)=archive/hidden 本数  "
+          "CC=claude CX=codex CU=cursor CP=copilot  サイズ=会話合計バイト")
     print("# 行頭 # は表示ごとの通し番号 (不安定キー)。確定は WS の path。\n")
 
-    def cols(c0, c1, c2, c3, c4):  # 固定幅・右寄せの数値カラム
-        return rpad(c0, 3) + " " + rpad(c1, 4) + " " + rpad(c2, 4) + " " + rpad(c3, 4) + " " + rpad(c4, 4) + "  "
+    def cols(c0, c1, c2, c3, c4, c5):  # #, 計, CC, CX, CU, CP
+        return (rpad(c0, 3) + " " + rpad(c1, 8) + " " + rpad(c2, 4) + " " + rpad(c3, 4) + " "
+                + rpad(c4, 4) + " " + rpad(c5, 4) + "  ")
 
-    print(cols("#", "計", "CC", "CX", "*") + rpad("サイズ", 6) + "  " + pad(f"期間({TZLABEL})", 24) + "WS")
+    print(cols("#", "計", "CC", "CX", "CU", "CP") + rpad("サイズ", 6) + "  "
+          + pad(f"期間({TZLABEL})", 24) + "WS")
     for i, (k, a) in enumerate(items, 1):
         period = f"{loc_str(a['first'])[:10]}〜{loc_str(a['last'])[:10]}"
-        print(cols(str(i), str(a["cc"] + a["cx"]), str(a["cc"]), str(a["cx"]), str(a["cxa"]))
+        tot = f"{_total(a)} ({a['arch']})" if a["arch"] else str(_total(a))
+        print(cols(str(i), tot, str(a["cc"]), str(a["cx"]), str(a["cu"]), str(a["cp"]))
               + rpad(human_size(a["bytes"]), 6) + "  " + pad(period, 24) + a["disp"].replace(_HOME_DISP, "~"))
 
 
 # ---------- 出力: dump ----------
 def find_by_id(cid, include_subagents=True, include_archived=True):
     hits = []
-    for r in iter_claude_sessions(None):
-        if r["id"] == cid or r["id"].startswith(cid):
-            hits.append(r)
-    for r in iter_codex_sessions(None, include_subagents, include_archived):
-        if r["id"] == cid or r["id"].startswith(cid):
-            hits.append(r)
+    sources = [iter_claude_sessions(None),
+               iter_codex_sessions(None, include_subagents, include_archived),
+               iter_cursor_sessions(None, include_subagents=True),
+               iter_copilot_sessions(None),
+               iter_copilot_cli_sessions(None)]
+    for src in sources:
+        for r in src:
+            if r["id"] == cid or r["id"].startswith(cid):
+                hits.append(r)
     return hits
 
 
@@ -615,7 +1303,8 @@ def cmd_dump(args):
         body = open(rec["path"], encoding="utf-8").read() if rec["path"] and os.path.exists(rec["path"]) else ""
     else:
         body = "\n\n".join(f"### {role}\n{t}" for role, t in messages_of(rec))
-    header = (f"# {rec['title']}\n# id={rec['id']} {origin_label(rec)} 開始={loc_str(rec['start'])}\n"
+    model = f" model={rec['model']}" if rec.get("model") else ""
+    header = (f"# {rec['title']}\n# id={rec['id']} {origin_label(rec)}{model} 開始={loc_str(rec['start'])}\n"
               f"# cwd={ws_path(rec['cwd'])}\n# path={rec['path']}\n\n")
     out = header + body
     if args.out:
@@ -630,11 +1319,13 @@ def cmd_dump(args):
 def main(argv=None):
     p = argparse.ArgumentParser(
         prog="chat-list",
-        description="claude+codex 会話履歴の横断リスト (読み取り専用)",
+        description="claude/codex/cursor/copilot 会話履歴の横断リスト (読み取り専用)",
         epilog=(
             "記号・列の見方:\n"
-            "  由来列 = '<WSラベル> CC|CX/<起動元>'  (CC=Claude Code, CX=Codex)\n"
-            "  由来末尾の '*'      = archived (codex のみ)\n"
+            "  由来列 = '<WSラベル> CC|CX|CU|CP/<起動元/モード>'  (CC=Claude Code, CX=Codex, CU=Cursor, CP=Copilot)\n"
+            "  モデル列            = --long の時のみ表示 (cursor/copilot のみ値あり。claude/codex は '-')\n"
+            "  由来末尾の '*'      = archived/hidden (除外せず印のみ)。short=*、long で codex=* /\n"
+            "                        claude=*c(Cursor で hidden) *v(VS Code) *cv(両方)。--workspaces は 計 の (N)\n"
             "  WSラベル A/B/C…     = 一覧冒頭 / --workspaces の対象 WS 凡例に対応\n"
             "  サイズ列            = 会話本体ファイルのバイト数 (--format json は正確な bytes)\n"
             "  '#'                 = 表示ごとに振り直す通し番号 (不安定。確定は id か WS path)\n"
@@ -661,12 +1352,14 @@ def main(argv=None):
     p.add_argument("--raw", action="store_true", help="--dump で生 jsonl を出す (既定は読めるテキスト)")
     p.add_argument("--head", type=int, metavar="N", help="各会話の先頭 N 行を併記")
     p.add_argument("--tail", type=int, metavar="N", help="各会話の末尾 N 行を併記")
-    p.add_argument("--tool", choices=["claude", "codex"], help="ツールで絞る")
+    p.add_argument("--tool", choices=["claude", "codex", "cursor", "copilot"], help="ツールで絞る")
+    p.add_argument("--long", "-l", action="store_true",
+                   help="一覧に モデル列を追加表示 (既定は省略。cursor/copilot のみ値あり)")
     p.add_argument("--since", metavar="YYYY-MM-DD", help="この日付以降 (ローカル時刻)")
     p.add_argument("--title", metavar="TEXT", help="タイトルの部分一致で絞る (高速。全文検索ではない)")
     p.add_argument("--grep", metavar="TEXT", help="本文 (会話の中身) を全文検索して絞り、一致行も表示 (本文を読むので遅め)")
-    p.add_argument("--include-subagents", action="store_true", help="codex の subagent スレッドも含める")
-    p.add_argument("--include-archived", action="store_true", help="archived も含める")
+    p.add_argument("--include-subagents", action="store_true",
+                   help="subagent 会話も含める (codex の subagent スレッド + cursor の subagentComposerIds)")
     p.add_argument("--limit", type=int, help="会話一覧を末尾 N 件に絞る (--workspaces には効かない)")
     p.add_argument("--sort", choices=["time", "mtime", "size", "count", "name"], default="time",
                    help="並び替えキー (既定 time)。time=開始 / mtime=最終活動 (会話内の最後の timestamp。"

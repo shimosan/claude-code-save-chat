@@ -1,6 +1,6 @@
 ---
 name: chat-list
-description: List Claude Code and Codex conversation history together, per workspace (read-only). Use when the user asks to "chat-list", "/chat-list", list/browse past chats or conversations, see a workspace's chat history, show the chat list across tools, search past conversations by title or content, or dump a past conversation's full text.
+description: List Claude Code, Codex, Cursor, and Copilot conversation history together, per workspace (read-only). Use when the user asks to "chat-list", "/chat-list", list/browse past chats or conversations, see a workspace's chat history, show the chat list across tools, search past conversations by title or content, or dump a past conversation's full text.
 ---
 
 # chat-list (Codex skin)
@@ -8,8 +8,10 @@ description: List Claude Code and Codex conversation history together, per works
 Thin Codex entrypoint for the shared chat-list core (`scripts/chat-list.py`). Do not duplicate the
 enumeration logic, data sources, or output format in this skill — the script is the authority.
 
-Lists Claude Code and Codex conversation history together for a workspace, read-only. Listing and
-full-text extraction only; no summarization, no resume (those are future layers).
+Lists **Claude Code / Codex / Cursor (native) / Copilot (VS Code extension + CLI)** conversation
+history together for a workspace, read-only. Listing and full-text extraction only; no
+summarization, no resume (those are future layers). Origin column = `<WS-letter> CC|CX|CU|CP/<surface>`
+(CC=Claude Code, CX=Codex, CU=Cursor, CP=Copilot).
 
 ## Source Of Truth
 
@@ -56,14 +58,14 @@ the rows (or the most relevant / top-N, saying so) rather than summarizing them 
 
 `--help` is the authoritative option reference. Main options:
 
-- no args: the current cwd's workspace, claude+codex merged, newest first.
+- no args: the current cwd's workspace, all four tools merged, newest first.
 - `--ws <value>`: target a workspace. A leading `/` is an exact absolute path; otherwise a cwd
   substring (NFC-normalized; bundles rename/normalization-split dirs). Repeatable / comma-separated
   for multiple workspaces. Works in the default list and with `--workspaces`. **Mutually exclusive
   with `--all-ws`** (giving both is an error).
 - `--all-ws`: every workspace (no cwd restriction). Cannot be combined with `--ws`.
-- `--workspaces`: numbered per-workspace census (conversation counts, span; archived codex shown
-  as a separate `*N`).
+- `--workspaces`: numbered per-workspace census (per-tool counts CC/CX/CU/CP, span; the 計/total
+  shows `N (A)` where `A` = archived/hidden count in that workspace).
 - `--sort` / `--reverse`: ordering, consistent across modes — **default `time` = start time,
   newest first** (both modes are start-based). Keys: `time` (start), `mtime` (last activity = the
   last in-content timestamp, not the OS file mtime), `size` (byte size: conversation list = per
@@ -79,8 +81,14 @@ the rows (or the most relevant / top-N, saying so) rather than summarizing them 
 - `--dump <id>`: a conversation's full text to stdout, `--out FILE`, or `--open [cursor|code]` for
   an editor buffer; `--raw` for raw jsonl.
 - `--limit N`: keep only the newest N of the conversation list (does not affect `--workspaces`).
-- `--tool claude|codex`, `--since YYYY-MM-DD`, `--include-subagents`, `--include-archived`,
-  `--format json`.
+- `--long` (`-l`): add a model column (cursor/copilot from records; claude from jsonl, codex from
+  rollout head). Omitted by default.
+- archived/hidden rows are **always shown** (never excluded) with a `*` mark after origin; under
+  `--long`, claude shows `*c`(hidden in Cursor) `*v`(VS Code) `*cv`(both), others `*`. `--workspaces`
+  shows the count in the total's `(N)`.
+- `--include-subagents`: include subagents (codex subagent threads + cursor subagentComposerIds),
+  excluded by default.
+- `--tool claude|codex|cursor|copilot`, `--since YYYY-MM-DD`, `--format json`.
 
 ## Natural language → selector
 
@@ -99,10 +107,13 @@ the rows (or the most relevant / top-N, saying so) rather than summarizing them 
 
 ## Sandbox And Permissions
 
-The script reads `~/.claude/projects/*.jsonl` (claude) and `~/.codex/sqlite/state_5.sqlite`
-(codex). These live outside the workspace, so in a restricted sandbox the read (or running
-`python3`) may need approval. It is strictly read-only — it never writes session stores. Request
-approval for the read if blocked; if it cannot be granted, state exactly what could not run.
+The script reads, read-only, from outside the workspace: `~/.claude/projects/*.jsonl` (claude),
+`~/.codex/sqlite/state_5.sqlite` (codex), Cursor/VS Code `…/globalStorage/state.vscdb` and
+`…/workspaceStorage/<hash>/` (cursor native + copilot), and `~/.copilot/` (copilot CLI). WAL
+sqlite DBs are opened `mode=ro` with an `immutable=1` fallback so they read whether or not the
+owning app is running. In a restricted sandbox the read (or running `python3`) may need approval.
+It never writes session stores. Request approval for the read if blocked; if it cannot be granted,
+state exactly what could not run.
 
 ## Quality Bar
 

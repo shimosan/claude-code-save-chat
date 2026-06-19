@@ -2,7 +2,7 @@
 
 Claude Code / Codex / Copilot の会話保存と複数端末 config 管理を、Obsidian とクラウド同期フォルダに寄せて運用するための個人用ライブラリ。
 
-複数端末で利用する Claude Code (CLI / VS Code 拡張 / Cursor 等) の chat 履歴サマリーを Obsidian vault のノートに保存するためのコマンド `/save-chat` と、端末設定の snapshot / drift 確認 / 安全な apply review を行う `/config-manager`、および Claude Code と Codex の会話履歴をワークスペース単位で横断一覧する読み取り専用コマンド `/chat-list` を実装する。あわせて、Claude Code / Codex / Copilot 向けの agent 設定、save-chat / config-manager workflow、補助スクリプトをクラウドストレージ (Dropbox / iCloud Drive / Google Drive 等) 経由で配布・共有する。Obsidian vault もクラウドストレージ経由で共有すると便利。
+複数端末で利用する Claude Code (CLI / VS Code 拡張 / Cursor 等) の chat 履歴サマリーを Obsidian vault のノートに保存するためのコマンド `/save-chat` と、端末設定の snapshot / drift 確認 / 安全な apply review を行う `/config-manager`、および Claude Code / Codex / Cursor / Copilot の会話履歴をワークスペース単位で横断一覧する読み取り専用コマンド `/chat-list` を実装する。あわせて、Claude Code / Codex / Copilot 向けの agent 設定、save-chat / config-manager workflow、補助スクリプトをクラウドストレージ (Dropbox / iCloud Drive / Google Drive 等) 経由で配布・共有する。Obsidian vault もクラウドストレージ経由で共有すると便利。
 
 ## 免責
 
@@ -32,7 +32,7 @@ This library publishes personal configuration and operations helpers as-is, with
 │   └── commands/                ← ~/.claude/commands/ へ deploy する slash commands
 │       ├── save-chat.md         ← save-chat core への薄い入口 (Claude Code 皮)
 │       ├── config-manager.md    ← config snapshot/update workflow への薄い入口
-│       └── chat-list.md         ← chat-list.py への薄い入口 (claude+codex 会話履歴の横断リスト)
+│       └── chat-list.md         ← chat-list.py への薄い入口 (4 ツール (claude/codex/cursor/copilot) 会話履歴の横断リスト)
 ├── .gitignore                   ← git 除外パターン
 ├── dotcodex/                    ← 各端末の ~/.codex/ へ deploy する Codex 原本
 │   ├── AGENTS.md                ← Codex global rules adapter
@@ -44,7 +44,7 @@ This library publishes personal configuration and operations helpers as-is, with
 ├── scripts/                     ← workflow の正本 + 補助スクリプト集 (非配布。README は目次)
 │   ├── README.md                ← scripts の目次
 │   ├── save-chat-core.md        ← save-chat の共通仕様 (workflow authority、3 皮が実行時に読む)
-│   ├── chat-list.py             ← claude+codex 会話履歴の横断リスト (chat-list 皮が実行時に読む)
+│   ├── chat-list.py             ← 4 ツール (claude/codex/cursor/copilot) 会話履歴の横断リスト (chat-list 皮が実行時に読む)
 │   ├── config-update.md         ← config snapshot/update workflow の正
 │   ├── config-apply-recipes.md  ← snapshot-driven config recipes
 │   ├── config-apply-patches.md  ← optional local patch recipes の入口
@@ -151,16 +151,17 @@ snapshot には editor settings のように低リスクで宣言的に再現で
 
 実装済み recipe には [`scripts/config-apply-recipes.md`](scripts/config-apply-recipes.md) で `risk class` を明示する。未カバー source の一般ルールも同ファイルに置き、流動的な拡張・ツール・環境差を全列挙しない方針にしている。
 
-## `/chat-list` — Claude Code と Codex の会話履歴を横断一覧 (読み取り専用)
+## `/chat-list` — Claude Code / Codex / Cursor / Copilot の会話履歴を横断一覧 (読み取り専用)
 
-Claude Code と Codex の会話履歴を **ワークスペース単位で 1 つに束ねて列挙・閲覧する**読み取り専用ツール。純正 UI が片方ずつ・WS 区別なしでしか見せない履歴を、横断・時系列で一覧できる。要約や引き継ぎ (resume) はせず、列挙と全文の取り出しに徹する。
+**Claude Code / Codex / Cursor (native) / Copilot (VS Code 拡張 + CLI)** の会話履歴を
+**ワークスペース単位で 1 つに束ねて列挙・閲覧する**読み取り専用ツール。純正 UI が片方ずつ・WS 区別なしでしか見せない履歴を、横断・時系列で一覧できる。要約や引き継ぎ (resume) はせず、列挙と全文の取り出しに徹する。由来列は `CC|CX|CU|CP/<surface>`(各ツール複数 surface)、archived/hidden は印 `*`(除外せず常に表示)。
 
 使い方は 2 通り。**生スクリプトを直接叩くだけで十分実用**で、slash command はその薄い糖衣:
 
 **(1) 生 CLI (人間が端末で直接 — これだけで完結)**
 
 ```bash
-python3 <library_path>/scripts/chat-list.py                   # 現在 WS の claude+codex 履歴を新しい順で
+python3 <library_path>/scripts/chat-list.py                   # 現在 WS の 4 ツール統合履歴を新しい順で
 python3 <library_path>/scripts/chat-list.py --workspaces      # WS 一覧 (各 WS の会話数・期間の census)
 python3 <library_path>/scripts/chat-list.py --ws GPU          # WS を部分一致で指定 (rename/正規化分裂も束ねる)
 python3 <library_path>/scripts/chat-list.py --grep NFC        # 本文を全文検索 (一致行も表示)
@@ -237,7 +238,7 @@ chat-list --ws hoge
 
 PATHEXT に `.CMD` があるので拡張子なしの `chat-list` で `chat-list.cmd` が呼ばれる。`chat-list.cmd` / `.gitattributes` は repo 同梱 (CRLF 固定)。
 
-- どちらも `chat-list` は呼び出し時の cwd を現在 WS とみなす (= そのフォルダの claude+codex 履歴)。
+- どちらも `chat-list` は呼び出し時の cwd を現在 WS とみなす (= そのフォルダの 4 ツール統合履歴)。
 - **Windows 動作確認済み** (amada / Windows 11)。Windows 配慮: 全ファイル読みは `encoding="utf-8"` 固定、codex の sqlite は `pathlib.as_uri()` で OS 非依存 URI、cwd の `\\?\` 拡張長プレフィックスとドライブ大小は正規化して claude/codex を 1 WS に統合、`%Z` のローカライズ名 (例「東京 (標準時)」) はオフセット略称化 (→ `JST`)。`chat-list.cmd` は CRLF 必須なので `.gitattributes` (`*.cmd text eol=crlf`) で固定。CJK (日本語) は**対話型ターミナルでは化けない** (Python が UTF-16 でコンソールへ直接出力する)。化けるのは出力を**パイプ/リダイレクト**した時だけで、その場合は `PYTHONIOENCODING=utf-8` を設定すれば解消する (データ処理自体は常に UTF-8 で正しい)。
 
 ## Codex 版 global rules / skills (任意)
