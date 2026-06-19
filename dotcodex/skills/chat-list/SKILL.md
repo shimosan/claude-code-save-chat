@@ -26,7 +26,7 @@ selector resolution and a confirmation step.
 
 ## Roles
 
-- **Core (`scripts/chat-list.py`, deterministic)**: takes exact selectors only (`--ws` is a cwd
+- **Core (`scripts/chat-list.py`, deterministic)**: takes exact selectors only (`--path` is a cwd
   path / substring, `--dump` is a conversation id). No LLM, read-only.
 - **Skin (this agent)**: resolve the user's natural language into exact selectors. For ambiguous
   requests, run `--workspaces` or a list to present candidates and narrow down. **Before `--dump`,
@@ -59,51 +59,47 @@ the rows (or the most relevant / top-N, saying so) rather than summarizing them 
 `--help` is the authoritative option reference. Main options:
 
 - no args: the current cwd's workspace, all four tools merged, newest first.
-- `--ws <value>`: target a workspace. A leading `/` is an exact absolute path; otherwise a cwd
-  substring (NFC-normalized; bundles rename/normalization-split dirs). Repeatable / comma-separated
-  for multiple workspaces. Works in the default list and with `--workspaces`. **Mutually exclusive
-  with `--all-ws`** (giving both is an error).
-- `--all-ws`: every workspace (no cwd restriction). Cannot be combined with `--ws`.
-- `--workspaces`: numbered per-workspace census (per-tool counts CC/CX/CU/CP, span; the 計/total
-  shows `N (A)` where `A` = archived/hidden count in that workspace).
-- `--sort` / `--reverse`: ordering, consistent across modes — **default `time` = start time,
-  newest first** (both modes are start-based). Keys: `time` (start), `mtime` (last activity = the
-  last in-content timestamp, not the OS file mtime), `size` (byte size: conversation list = per
-  conversation, --workspaces = total), `count` (--workspaces only), `name`. In `--workspaces`,
-  `time` = first activity and `mtime` = last activity. Natural direction: time/mtime/size/count
-  descending (newest/largest first), name ascending; `--reverse` (`-r`) flips it in any mode. An
-  invalid key for the mode (e.g. `count` for the conversation list) is an error. Each conversation
-  row shows a size column (file byte count, human-readable; exact `bytes` in `--format json`).
-- `--head N` / `--tail N`: preview each conversation's first / last N lines.
-- `--title <text>`: filter by title (fast, metadata only).
-- `--grep <text>`: full-text search of conversation bodies, showing matching lines (reads bodies,
-  slower; limited to the `--ws` scope).
-- `--dump <id>`: a conversation's full text to stdout, `--out FILE`, or `--open [cursor|code]` for
-  an editor buffer; `--raw` for raw jsonl.
-- `--limit N`: keep only the newest N of the conversation list (does not affect `--workspaces`).
+- `--path <value>`: target a workspace by path. **Substring by default** (NFC-normalized; bundles
+  rename/normalization-split dirs); `--exact` for full equality. Repeatable / comma-separated.
+  Works in the default list and with `--workspaces`. **Mutually exclusive with `--all`**.
+- `--all`: every workspace (no path restriction). Cannot be combined with `--path`.
+- `--exact`: make `--path` / `--title` match exactly (default is substring).
+- `--workspaces`: numbered per-workspace census (per-tool counts CC/CX/CU/CP, a `total`, an `arch`
+  column `-N` = archived/hidden of total, size, and separate `start`/`end` date columns).
+- `--sort` / `--reverse`: ordering, **default `start` = start time, newest first**. Keys match the
+  column headers: shared `start`, `end` (last activity = last in-content timestamp, not OS mtime),
+  `size`; conversation-list-only `title`; `--workspaces`-only `total` (count) and `path`.
+  start/end/size/total descending, title/path ascending; `--reverse` (`-r`) flips. A key invalid
+  for the mode is an error.
+- `--head N` / `--tail N`: keep the first / last N rows of the output (Unix-like; both modes).
+- `--preview [N]`: in the conversation list, show each conversation's body preview — `N` first N
+  lines, `--preview=-N` last N lines, bare `--preview` = 10.
+- `--title <text>` / `--grep <text>`: filter by title (substring, or exact with `--exact`) / by
+  body full-text (reads bodies, slower). Both work in both modes.
+- `--tool claude|codex|cursor|copilot`, `--include-subagents`: both modes.
+- `--dump <id>`: a conversation's full text to stdout (`> file` to save) or `--open [cursor|code]`
+  for an editor buffer; `--json` for a structured message array.
 - `--long` (`-l`): add a model column (cursor/copilot from records; claude from jsonl, codex from
   rollout head). Omitted by default.
 - archived/hidden rows are **always shown** (never excluded) with a `*` mark after origin; under
   `--long`, claude shows `*c`(hidden in Cursor) `*v`(VS Code) `*cv`(both), others `*`. `--workspaces`
-  shows the count in the total's `(N)`.
-- `--include-subagents`: include subagents (codex subagent threads + cursor subagentComposerIds),
-  excluded by default.
-- `--tool claude|codex|cursor|copilot`, `--since YYYY-MM-DD`, `--format json`.
+  shows the count in the `arch` column (`-N`).
+- `--json`: machine-readable structured JSON (any mode; dump = message array).
 
 ## Natural language → selector
 
-- "○○ workspace's history": `--ws ○○` (substring). If it spans multiple workspaces, show
-  `--workspaces` and let the user pick. Multiple at once: `--ws a --ws b`.
-- "workspace number N": from a `--workspaces` listing, look up that row's path and pass `--ws
-  <path>` (the leading `#` is a per-listing unstable key; the path is the stable selector; use
-  `--format json`'s `i` to map mechanically).
+- "○○ workspace's history": `--path ○○` (substring). If it spans multiple workspaces, show
+  `--workspaces` and let the user pick. Multiple at once: `--path a --path b`. Exact: add `--exact`.
+- "workspace number N": from a `--workspaces` listing, look up that row's path and pass `--path
+  <path> --exact` (the leading `#` is a per-listing unstable key; the path is the stable selector;
+  use `--json`'s `cwd` to map mechanically).
 - "show conversation N in full" / "the ○○ conversation": resolve the listing number or title to a
   conversation id and run `--dump <id>`. **First** show that one conversation's title / start time
-  / last few lines and confirm.
+  / a body preview (`--preview`) and confirm.
 - "find conversations containing ○○": `--grep ○○` (body full-text). Title only: `--title ○○`.
 - Numbers (`#`) in both the conversation list and the workspace list are reassigned per display
   (unstable). The stable selector is always an id or a workspace path.
-- Do not paste large dumps inline — open with `--open` / `--out` or excerpt the key parts.
+- Do not paste large dumps inline — open with `--open` or redirect to a file; or excerpt key parts.
 
 ## Sandbox And Permissions
 

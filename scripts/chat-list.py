@@ -207,28 +207,17 @@ def ws_key(cwd):
 _HOME_DISP = ws_path(HOME)
 
 
-def make_cwd_pred(target, mode):
-    """mode: exact | basename | substring。default は exact または basename 一致 (rename/正規化に強い)."""
+def make_cwd_pred(target, exact=False):
+    """cwd マッチ述語。既定は部分一致 (NFC 正規化)、exact=True で完全一致。"""
     t = norm(target)
-    tb = base(target)
-    if mode == "exact":
+    if exact:
         return lambda c: norm(c) == t
-    if mode == "basename":
-        return lambda c: base(c) == tb
-    if mode == "substring":
-        return lambda c: t in norm(c)
-    return lambda c: norm(c) == t or base(c) == tb  # default
+    return lambda c: t in norm(c)
 
 
-def make_multi_pred(targets, ws_match):
-    """複数の WS 指定 (--ws 反復 / カンマ区切り) の OR。各値は '/' 始まりで厳密 path、他は部分一致."""
-    preds = []
-    for tv in targets:
-        if tv.startswith("/"):
-            mode = "exact" if ws_match == "default" else ws_match
-        else:
-            mode = "substring" if ws_match == "default" else ws_match
-        preds.append(make_cwd_pred(tv, mode))
+def make_multi_pred(targets, exact=False):
+    """複数の --path 値 (反復 / カンマ区切り) の OR。exact で各値を完全一致に。"""
+    preds = [make_cwd_pred(tv, exact) for tv in targets]
     return lambda c: any(p(c) for p in preds)
 
 
@@ -1039,7 +1028,24 @@ def _filesize(path):
         return -1
 
 
-def collect(args, pred):
+def _filter_recs(args, recs):
+    """--title / --grep を適用 (両モード共通)。--exact なら title は完全一致。grep は本文を読むので遅い。"""
+    if args.title:
+        g = args.title.lower()
+        recs = [r for r in recs if (g == r["title"].lower() if args.exact else g in r["title"].lower())]
+    if args.grep:  # 本文の全文検索。一致した会話だけ残し、一致行を添える。
+        kept = []
+        for r in recs:
+            m = grep_matches(r, args.grep)
+            if m:
+                r["_match"] = m
+                kept.append(r)
+        recs = kept
+    return recs
+
+
+def _iter_all(args, pred):
+    """選択された harness の session を列挙 (--tool で絞る)。両モードの共通入口。"""
     recs = []
     if args.tool in (None, "claude"):
         recs += list(iter_claude_sessions(pred))
@@ -1050,29 +1056,18 @@ def collect(args, pred):
     if args.tool in (None, "copilot"):
         recs += list(iter_copilot_sessions(pred))
         recs += list(iter_copilot_cli_sessions(pred))
-    # 重複排除: 同一セッションが複数 dir に物理コピーされている場合がある
-    # (フォルダ rename / Dropbox 同期)。(harness, 完全 id) で束ね、最も完全な (大きい) コピーを残す。
+    # 重複排除: 同一セッションが複数 dir に物理コピーされている場合 (rename / Dropbox 同期)。
+    # (harness, 完全 id) で束ね、最も完全な (大きい) コピーを残す。
     best = {}
     for r in recs:
         key = (r["harness"], r["id"])
-        sz = r["bytes"]
-        if key not in best or sz > best[key][0]:
-            best[key] = (sz, r)
-    recs = [v[1] for v in best.values()]
-    if args.since:
-        since = datetime.datetime.strptime(args.since, "%Y-%m-%d").astimezone()
-        recs = [r for r in recs if r["start"] and r["start"] >= since]
-    if args.title:
-        g = args.title.lower()
-        recs = [r for r in recs if g in r["title"].lower()]
-    if args.grep:  # 本文の全文検索 (中身を読むので遅め)。一致した会話だけ残し、一致行を添える。
-        kept = []
-        for r in recs:
-            m = grep_matches(r, args.grep)
-            if m:
-                r["_match"] = m
-                kept.append(r)
-        recs = kept
+        if key not in best or r["bytes"] > best[key][0]:
+            best[key] = (r["bytes"], r)
+    return [v[1] for v in best.values()]
+
+
+def collect(args, pred):
+    recs = _filter_recs(args, _iter_all(args, pred))
     recs.sort(key=lambda r: (r["start"] is None, r["start"]))
     return recs
 
@@ -1088,28 +1083,32 @@ _MIN_DT = datetime.datetime.min.replace(tzinfo=UTC)
 
 
 def _sort_recs(recs, how, reverse=False):
-    """会話一覧の並べ替え。既定 time=開始時刻、time/mtime とも新しい順 (最新が上)。--reverse で反転。
-    キー: time=開始 / mtime=最終活動 / size=サイズ / name=タイトル。count は会話一覧には無効 → time."""
-    how = how if how in ("mtime", "size", "name") else "time"
-    if how == "mtime":
+    """会話一覧の並べ替え。既定 start=開始時刻、start/end とも新しい順 (最新が上)。--reverse で反転。
+    キー: start=開始 / end=最終活動 / size=サイズ / name=タイトル。count は会話一覧には無効 → start."""
+    how = how if how in ("end", "size", "title") else "start"
+    if how == "end":
         keyf, desc = (lambda r: r["updated"] or r["start"] or _MIN_DT), True
     elif how == "size":
         keyf, desc = (lambda r: r["bytes"]), True
-    elif how == "name":
+    elif how == "title":
         keyf, desc = (lambda r: r["title"].lower()), False
-    else:  # time = 開始 (新しい順が既定)
+    else:  # start = 開始 (新しい順が既定)
         keyf, desc = (lambda r: r["start"] or _MIN_DT), True
     recs.sort(key=keyf, reverse=desc ^ reverse)
     return recs
 
 
-def _list_sort_label(how, reverse):
-    how = how if how in ("mtime", "size", "name") else "time"
-    base = {"time": "開始時刻", "mtime": "最終活動", "size": "サイズ", "name": "タイトル"}[how]
-    desc = (how in ("time", "mtime", "size")) ^ reverse
-    if how in ("time", "mtime"):
-        return base + ("↓ 新しい順" if desc else "↑ 古い順")
-    return base + ("↓" if desc else "↑")
+def _sort_label(how, reverse):
+    """English sort label, e.g. 'start (newest first)'. start/end/size/total default descending,
+    title/path ascending; --reverse flips. Keys match the column headers."""
+    if how == "size":
+        return f"size ({'smallest' if reverse else 'largest'} first)"
+    if how == "total":
+        return f"total ({'fewest' if reverse else 'most'} first)"
+    if how in ("title", "path"):
+        return f"{how} ({'Z-A' if reverse else 'A-Z'})"
+    how = "end" if how == "end" else "start"
+    return f"{how} ({'oldest' if reverse else 'newest'} first)"
 
 
 # ---------- 出力: 一覧 ----------
@@ -1118,10 +1117,11 @@ def _ws_key(r):
 
 
 def cmd_list(args, pred):
-    recs = collect(args, pred)
-    if args.limit:
-        recs = recs[-args.limit:]
-    recs = _sort_recs(recs, args.sort, args.reverse)
+    recs = _sort_recs(collect(args, pred), args.sort, args.reverse)
+    if args.head:
+        recs = recs[:args.head]   # 先頭 N 件 (Unix head)
+    if args.tail:
+        recs = recs[-args.tail:]  # 末尾 N 件 (Unix tail)
     # 対象 WS に出現順で A/B/C… を振る
     order = []
     letters = {}
@@ -1132,27 +1132,26 @@ def cmd_list(args, pred):
         if k not in letters:
             letters[k] = ws_letter(len(order))
             order.append((k, r["cwd"]))
-    if args.format == "json":
+    if args.json:
         # start / updated は datetime。default で ISO 文字列化する (片方漏れると TypeError)。
         print(json.dumps([{**r, "ws": letters[_ws_key(r)]} for r in recs],
                          ensure_ascii=False, indent=1, default=_json_default))
         return
     n = {h: sum(1 for r in recs if r["harness"] == h) for h in ("claude", "codex", "cursor", "copilot")}
-    print("# chat-list  対象 WS:")
+    print("# chat-list  workspaces:")
     if order:
         for k, cwd in order:
-            print(f"#   {letters[k]}  {(ws_path(cwd) or '(不明)').replace(_HOME_DISP, '~')}  ({counts[k]}本)")
+            print(f"#   {letters[k]}  {(ws_path(cwd) or '(unknown)').replace(_HOME_DISP, '~')}  ({counts[k]})")
     else:
-        print("#   (該当なし)")
+        print("#   (none)")
     na = sum(1 for r in recs if r["archived"])
-    print(f"# 計 {len(recs)} 本 (claude {n['claude']} + codex {n['codex']} + cursor {n['cursor']} "
-          f"+ copilot {n['copilot']})  ソート: {_list_sort_label(args.sort, args.reverse)}")
+    print(f"# {len(recs)} conversations (claude {n['claude']} + codex {n['codex']} + cursor {n['cursor']} "
+          f"+ copilot {n['copilot']})  ·  sort: {_sort_label(args.sort, args.reverse)}")
     if na:
         if args.long:
-            print(f"# 由来末尾 * = archived/hidden ({na} 本)。codex/cursor/copilot=* / "
-                  "claude=*c(Cursor) *v(VS Code) *cv(両方)")
+            print(f"# '*' after origin = archived/hidden ({na}); claude *c=Cursor *v=VS Code *cv=both, others *")
         else:
-            print(f"# 由来末尾 * = archived/hidden ({na} 本。--long で claude の Cursor/VS Code 別が出る)")
+            print(f"# '*' after origin = archived/hidden ({na}; --long splits claude into Cursor/VS Code)")
     print()
     # 由来列の表示文字列 (WSラベル + 由来 + archive 記号) を先に作り、列幅は実データの最大に合わせる。
     # short: 素の '*' / long: '*c/*v/*cv' (claude) ・ '*' (codex)。記号は除外ではなく印のみ。
@@ -1161,7 +1160,7 @@ def cmd_list(args, pred):
         o = f"{letters[_ws_key(r)]} {origin_label(r)}"
         o += (r.get("_archmark", "") if args.long else ("*" if r["archived"] else ""))
         odisp.append(o)
-    ow = max([vwidth("由来")] + [vwidth(o) for o in odisp])
+    ow = max([vwidth("origin")] + [vwidth(o) for o in odisp])
     # モデル列は --long の時だけ。幅は実際に出すモデル名の最大に合わせる (固定広幅にしない)。
     models, mw = None, 0
     if args.long:
@@ -1173,10 +1172,10 @@ def cmd_list(args, pred):
             if not m and r.get("_kind") == "cli":  # copilot CLI は events.jsonl から遅延取得
                 m = _copilot_cli_model(r["path"])
             models.append(m or "-")
-        mw = min(34, max([vwidth("モデル")] + [vwidth(m) for m in models]))
-    mhead = pad("モデル", mw + 1) if args.long else ""
-    print(pad("#", 4) + pad(f"開始({TZLABEL})", 17) + pad("由来", ow + 1) + mhead
-          + pad("ID", 10) + rpad("サイズ", 6) + "  " + "タイトル")
+        mw = min(34, max([vwidth("model")] + [vwidth(m) for m in models]))
+    mhead = pad("model", mw + 1) if args.long else ""
+    print(pad("#", 4) + pad("start", 17) + pad("origin", ow + 1) + mhead
+          + pad("id", 10) + rpad("size", 6) + "  " + "title")
     for i, r in enumerate(recs, 1):
         mcol = pad(clip(models[i - 1], mw), mw + 1) if args.long else ""
         print(pad(str(i), 4) + pad(loc_str(r["start"]), 17) + pad(odisp[i - 1], ow + 1)
@@ -1185,37 +1184,20 @@ def cmd_list(args, pred):
         if r.get("_match"):  # --grep の一致行を優先表示
             for ln in r["_match"]:
                 print(f"      ┊ {ln[:96]}")
-        elif args.head or args.tail:
+        elif args.preview is not None:  # 本文プレビュー: N=先頭 N 行 / 負値=末尾 N 行
             lines = text_lines(r)
-            sel = lines[: args.head] if args.head else lines[-args.tail:]
+            sel = lines[:args.preview] if args.preview >= 0 else lines[args.preview:]
             for ln in sel:
                 print(f"      ┊ {ln[:96]}")
 
 
 # ---------- 出力: WS 一覧 ----------
 def cmd_workspaces(args, pred=None):
-    # census は一覧と同じ列挙 (per-session cwd + (harness,id) dedup) で作る → 表示と整合。
-    # archived/hidden も現役として計に算入。別途その本数を 計 の括弧で示す。subagent だけ除外。
-    recs = []
-    if args.tool in (None, "claude"):
-        recs += list(iter_claude_sessions(None))
-    if args.tool in (None, "codex"):
-        recs += list(iter_codex_sessions(None, args.include_subagents, include_archived=True))
-    if args.tool in (None, "cursor"):
-        recs += list(iter_cursor_sessions(None, args.include_subagents))
-    if args.tool in (None, "copilot"):
-        recs += list(iter_copilot_sessions(None))
-        recs += list(iter_copilot_cli_sessions(None))
-    best = {}
-    for r in recs:
-        key = (r["harness"], r["id"])
-        sz = r["bytes"]  # cursor は virtual path (filesize 不可) なのでレコードの bytes を使う
-        if key not in best or sz > best[key][0]:
-            best[key] = (sz, r)
-
+    # census は一覧と同じ列挙 (--tool 選択 + (harness,id) dedup + --title/--grep フィルタ) で作る → 表示と整合。
+    # archived/hidden も現役として計に算入。別途その本数を arch 列 (-N) で示す。subagent は既定除外。
     cntkey = {"claude": "cc", "codex": "cx", "cursor": "cu", "copilot": "cp"}
     agg = {}  # ws_key(cwd) -> dict(cc, cx, cu, cp, arch, bytes, first, last, disp)
-    for r in (v[1] for v in best.values()):
+    for r in _filter_recs(args, _iter_all(args, None)):
         if not r["cwd"]:
             continue
         if pred is not None and not pred(r["cwd"]):
@@ -1236,42 +1218,49 @@ def cmd_workspaces(args, pred=None):
     def _total(a):
         return a["cc"] + a["cx"] + a["cu"] + a["cp"]
 
-    # 並べ替え (会話一覧と統一: 既定 time=初回活動、time/mtime とも新しい順、--reverse で反転)。
+    # 並べ替え (会話一覧と統一: 既定 start=初回活動、start/end とも新しい順、--reverse で反転)。
     items = list(agg.items())
-    how = args.sort if args.sort in ("mtime", "size", "count", "name") else "time"
-    if how == "mtime":
+    how = args.sort if args.sort in ("end", "size", "total", "path") else "start"
+    if how == "end":
         keyf, desc = (lambda kv: kv[1]["last"] or _MIN_DT), True
     elif how == "size":
         keyf, desc = (lambda kv: kv[1]["bytes"]), True
-    elif how == "count":
+    elif how == "total":
         keyf, desc = (lambda kv: _total(kv[1])), True
-    elif how == "name":
-        keyf, desc = (lambda kv: kv[0]), False
-    else:  # time = 初回活動 (first, 新しい順が既定)
+    elif how == "path":
+        keyf, desc = (lambda kv: kv[1]["disp"]), False
+    else:  # start = 初回活動 (first, 新しい順が既定)
         keyf, desc = (lambda kv: kv[1]["first"] or _MIN_DT), True
     items.sort(key=keyf, reverse=desc ^ args.reverse)
-    if args.format == "json":
+    nws = len(items)
+    if args.head:
+        items = items[:args.head]   # 先頭 N WS (Unix head)
+    if args.tail:
+        items = items[-args.tail:]  # 末尾 N WS (Unix tail)
+    if args.json:
         print(json.dumps([{"i": i, "cwd": v["disp"], "total": _total(v),
                            **{kk: (vv.isoformat() if isinstance(vv, datetime.datetime) else vv)
                               for kk, vv in v.items() if kk != "disp"}}
                           for i, (k, v) in enumerate(items, 1)],
                          ensure_ascii=False, indent=1))
         return
-    print(f"# chat-list --workspaces  ({len(items)} WS)   計=CC+CX+CU+CP  計の (N)=archive/hidden 本数  "
-          "CC=claude CX=codex CU=cursor CP=copilot  サイズ=会話合計バイト")
-    print("# 行頭 # は表示ごとの通し番号 (不安定キー)。確定は WS の path。\n")
+    shown = f"{len(items)} of {nws} WS" if len(items) < nws else f"{nws} WS"
+    print(f"# chat-list --workspaces ({shown}), CC=claude CX=codex CU=cursor CP=copilot, "
+          f"sort: {_sort_label(args.sort, args.reverse)}")
+    print()
 
-    def cols(c0, c1, c2, c3, c4, c5):  # #, 計, CC, CX, CU, CP
-        return (rpad(c0, 3) + " " + rpad(c1, 8) + " " + rpad(c2, 4) + " " + rpad(c3, 4) + " "
-                + rpad(c4, 4) + " " + rpad(c5, 4) + "  ")
+    def cols(c0, c1, c2, c3, c4, c5, c6):  # #, CC, CX, CU, CP, total, arch
+        return (rpad(c0, 3) + "  " + rpad(c1, 3) + "  " + rpad(c2, 3) + "  " + rpad(c3, 3) + "  "
+                + rpad(c4, 3) + "  " + rpad(c5, 5) + "  " + rpad(c6, 4) + "  ")
 
-    print(cols("#", "計", "CC", "CX", "CU", "CP") + rpad("サイズ", 6) + "  "
-          + pad(f"期間({TZLABEL})", 24) + "WS")
+    print(cols("#", "CC", "CX", "CU", "CP", "total", "arch") + rpad("size", 6) + "  "
+          + pad("start", 12) + pad("end", 12) + "path")
     for i, (k, a) in enumerate(items, 1):
-        period = f"{loc_str(a['first'])[:10]}〜{loc_str(a['last'])[:10]}"
-        tot = f"{_total(a)} ({a['arch']})" if a["arch"] else str(_total(a))
-        print(cols(str(i), tot, str(a["cc"]), str(a["cx"]), str(a["cu"]), str(a["cp"]))
-              + rpad(human_size(a["bytes"]), 6) + "  " + pad(period, 24) + a["disp"].replace(_HOME_DISP, "~"))
+        arch = f"-{a['arch']}" if a["arch"] else ""
+        print(cols(str(i), str(a["cc"]), str(a["cx"]), str(a["cu"]), str(a["cp"]), str(_total(a)), arch)
+              + rpad(human_size(a["bytes"]), 6) + "  "
+              + pad(loc_str(a["first"])[:10], 12) + pad(loc_str(a["last"])[:10], 12)
+              + a["disp"].replace(_HOME_DISP, "~"))
 
 
 # ---------- 出力: dump ----------
@@ -1299,20 +1288,18 @@ def cmd_dump(args):
             print(f"  {r['id']}  {origin_label(r)}  {loc_str(r['start'])}  {r['title'][:50]}", file=sys.stderr)
         sys.exit(2)
     rec = hits[0]
-    if args.raw:
-        body = open(rec["path"], encoding="utf-8").read() if rec["path"] and os.path.exists(rec["path"]) else ""
-    else:
-        body = "\n\n".join(f"### {role}\n{t}" for role, t in messages_of(rec))
+    msgs = messages_of(rec)
+    if args.json:  # 構造化 JSON (メッセージ配列)。ファイルに残すならリダイレクト ' > file'
+        print(json.dumps({"id": rec["id"], "harness": rec["harness"], "origin": rec["origin"],
+                          "model": rec.get("model"), "start": rec["start"], "updated": rec["updated"],
+                          "cwd": ws_path(rec["cwd"]), "title": rec["title"], "path": rec["path"],
+                          "messages": [{"role": rl, "text": t} for rl, t in msgs]},
+                         ensure_ascii=False, indent=1, default=_json_default))
+        return
     model = f" model={rec['model']}" if rec.get("model") else ""
     header = (f"# {rec['title']}\n# id={rec['id']} {origin_label(rec)}{model} 開始={loc_str(rec['start'])}\n"
               f"# cwd={ws_path(rec['cwd'])}\n# path={rec['path']}\n\n")
-    out = header + body
-    if args.out:
-        with open(args.out, "w", encoding="utf-8") as f:
-            f.write(out)
-        print(f"[chat-list] {rec['id'][:8]} を書き出し: {args.out}  ({len(out)} 字)")
-    else:
-        sys.stdout.write(out + "\n")
+    sys.stdout.write(header + "\n\n".join(f"### {role}\n{t}" for role, t in msgs) + "\n")
 
 
 # ---------- CLI ----------
@@ -1321,67 +1308,64 @@ def main(argv=None):
         prog="chat-list",
         description="claude/codex/cursor/copilot 会話履歴の横断リスト (読み取り専用)",
         epilog=(
-            "記号・列の見方:\n"
-            "  由来列 = '<WSラベル> CC|CX|CU|CP/<起動元/モード>'  (CC=Claude Code, CX=Codex, CU=Cursor, CP=Copilot)\n"
-            "  モデル列            = --long の時のみ表示 (cursor/copilot のみ値あり。claude/codex は '-')\n"
-            "  由来末尾の '*'      = archived/hidden (除外せず印のみ)。short=*、long で codex=* /\n"
-            "                        claude=*c(Cursor で hidden) *v(VS Code) *cv(両方)。--workspaces は 計 の (N)\n"
-            "  WSラベル A/B/C…     = 一覧冒頭 / --workspaces の対象 WS 凡例に対応\n"
-            "  サイズ列            = 会話本体ファイルのバイト数 (--format json は正確な bytes)\n"
-            "  '#'                 = 表示ごとに振り直す通し番号 (不安定。確定は id か WS path)\n"
-            "  並び               = 既定 time=開始時刻・新しい順 (最新が上, 両モードとも開始基準)。\n"
-            "                        mtime=最終活動 / size / count / name。--reverse で反転"
+            "記号・列:\n"
+            "  origin = '<WS> CC|CX|CU|CP/<surface>'  (CC=Claude Code, CX=Codex, CU=Cursor, CP=Copilot)\n"
+            "  origin 末尾 '*'     = archived/hidden (除外せず印)。--long で claude=*c(Cursor)/*v(VS Code)/*cv、他=*。\n"
+            "                        --workspaces は arch 列に -N。\n"
+            "  model 列            = --long 時のみ (cursor/copilot=記録値, claude=jsonl, codex/CLI=遅延取得)\n"
+            "  size                = 会話バイト数 (--json は正確な bytes)\n"
+            "  '#'                 = 表示ごとの通し番号 (不安定。確定は id か path)\n"
+            "  sort               = 既定 start・新しい順。end=最終活動 / size / title(一覧) / total,path(--workspaces)。\n"
+            "                        --reverse で反転。--path/--title は既定 部分一致 (--exact で完全一致)"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    # --ws と --all-ws は排他 (--all-ws ≡ --ws * = 全 WS)
-    gws = p.add_mutually_exclusive_group()
-    gws.add_argument("--ws", action="append", metavar="VALUE",
-                     help="WS 限定子 (どのモードでも有効)。'/'始まり=絶対パス(厳密) / 他=cwd 部分一致。"
-                          "反復・カンマ区切りで複数可。未指定なら一覧は現在 cwd、--workspaces は全 WS")
-    gws.add_argument("--all-ws", action="store_true",
-                     help="全 WS (= --ws * 相当)。--ws とは排他")
-    p.add_argument("--ws-match", choices=["default", "exact", "basename", "substring"], default="default",
-                   help="--ws / 既定 cwd のマッチ方式 (default = 厳密 or basename 一致)")
+    # --path と --all は排他 (--all = path 絞り無し = 全 WS)
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--path", action="append", metavar="VALUE",
+                   help="WS を path で限定 (両モード)。既定は部分一致、--exact で完全一致。反復・カンマ区切りで複数可。"
+                        "未指定: 一覧=現在 cwd / --workspaces=全 WS")
+    g.add_argument("--all", action="store_true", help="全 WS (path 絞り無し)。--path と排他")
+    p.add_argument("--exact", action="store_true", help="--path / --title を完全一致に (既定は部分一致)")
     p.add_argument("--workspaces", action="store_true", help="WS 一覧 (各 WS のチャット数概要)")
     p.add_argument("--dump", metavar="ID", help="指定 id の会話全文を出力")
-    p.add_argument("--out", metavar="FILE", help="--dump の書き出し先 (既定 stdout)")
     p.add_argument("--open", nargs="?", const="cursor", metavar="EDITOR",
                    help="出力を Cursor/VSCode の untitled バッファで開く (= '| EDITOR -')。"
                         "既定 cursor、'--open code' で VSCode。どのモードでも可")
-    p.add_argument("--raw", action="store_true", help="--dump で生 jsonl を出す (既定は読めるテキスト)")
-    p.add_argument("--head", type=int, metavar="N", help="各会話の先頭 N 行を併記")
-    p.add_argument("--tail", type=int, metavar="N", help="各会話の末尾 N 行を併記")
-    p.add_argument("--tool", choices=["claude", "codex", "cursor", "copilot"], help="ツールで絞る")
+    p.add_argument("--json", action="store_true",
+                   help="機械可読の構造化 JSON で出力 (全モード。dump はメッセージ配列)")
     p.add_argument("--long", "-l", action="store_true",
-                   help="一覧に モデル列を追加表示 (既定は省略。cursor/copilot のみ値あり)")
-    p.add_argument("--since", metavar="YYYY-MM-DD", help="この日付以降 (ローカル時刻)")
-    p.add_argument("--title", metavar="TEXT", help="タイトルの部分一致で絞る (高速。全文検索ではない)")
-    p.add_argument("--grep", metavar="TEXT", help="本文 (会話の中身) を全文検索して絞り、一致行も表示 (本文を読むので遅め)")
+                   help="long 表形式 (一覧=model 列を追加。--workspaces は将来用・現状は追加列なし)")
+    p.add_argument("--preview", nargs="?", type=int, const=10, metavar="N",
+                   help="一覧で各会話の本文プレビュー: N=先頭 N 行 / --preview=-N=末尾 N 行 / 単体=既定 10 行")
+    p.add_argument("--head", type=int, metavar="N", help="出力の先頭 N 件に絞る (両モード・Unix 流)")
+    p.add_argument("--tail", type=int, metavar="N", help="出力の末尾 N 件に絞る (両モード・Unix 流)")
+    p.add_argument("--tool", choices=["claude", "codex", "cursor", "copilot"], help="ツールで絞る (両モード)")
+    p.add_argument("--title", metavar="TEXT", help="タイトルで絞る (部分一致 / --exact で完全一致。両モード)")
+    p.add_argument("--grep", metavar="TEXT", help="本文を全文検索して絞る (本文を読むので遅め。両モード)")
     p.add_argument("--include-subagents", action="store_true",
-                   help="subagent 会話も含める (codex の subagent スレッド + cursor の subagentComposerIds)")
-    p.add_argument("--limit", type=int, help="会話一覧を末尾 N 件に絞る (--workspaces には効かない)")
-    p.add_argument("--sort", choices=["time", "mtime", "size", "count", "name"], default="time",
-                   help="並び替えキー (既定 time)。time=開始 / mtime=最終活動 (会話内の最後の timestamp。"
-                        "OS の file mtime ではない) / size=バイト数 (会話一覧=会話ごと, --workspaces=合計) / "
-                        "count=本数 (--workspaces 専用) / name。time/mtime/size/count は新しい/大きい順、name=昇順。"
-                        "--workspaces では time=初回活動・mtime=最終活動。--reverse で反転")
-    p.add_argument("--reverse", "-r", action="store_true", help="並び順を反転 (全モード・全キー共通)")
-    p.add_argument("--format", choices=["table", "json"], default="table")
+                   help="subagent も含める (codex の subagent + cursor の subagentComposerIds。両モード)")
+    p.add_argument("--sort", choices=["start", "end", "size", "total", "title", "path"], default="start",
+                   help="並び替えキー (既定 start。列 header 名と一致)。共通: start / end (最終活動) / size。"
+                        "一覧専用: title。--workspaces 専用: total (本数) / path。"
+                        "start/end/size/total は新しい/大きい順、title/path は昇順。--reverse で反転")
+    p.add_argument("--reverse", "-r", action="store_true", help="並び順を反転 (両モード)")
     args = p.parse_args(argv)
 
-    # mode で無効な sort キーは黙ってフォールバックせずエラーにする
-    if args.sort == "count" and not args.workspaces:
-        p.error("--sort count は --workspaces 専用です (会話一覧では time / mtime / size / name)")
+    # mode で無効な sort キー (その列が無いモード) はエラー
+    if not args.workspaces and args.sort in ("total", "path"):
+        p.error(f"--sort {args.sort} は --workspaces 専用です (一覧では start / end / size / title)")
+    if args.workspaces and args.sort == "title":
+        p.error("--sort title は会話一覧専用です (--workspaces では start / end / size / total / path)")
 
-    # --ws はどのモードでも効く限定子。無ければ: list は現在 cwd / workspaces は全 WS が既定。
+    # --path はどのモードでも効く限定子。無ければ: 一覧=現在 cwd (完全一致) / --workspaces=全 WS。
     def resolve_pred(default_to_cwd):
-        if args.ws:
-            targets = [x for v in args.ws for x in v.split(",") if x]
-            return make_multi_pred(targets, args.ws_match)
-        if args.all_ws:
+        if args.path:
+            targets = [x for v in args.path for x in v.split(",") if x]
+            return make_multi_pred(targets, args.exact)
+        if args.all:
             return None
-        return make_cwd_pred(os.getcwd(), args.ws_match) if default_to_cwd else None
+        return make_cwd_pred(os.getcwd(), exact=True) if default_to_cwd else None
 
     def run():
         if args.dump:
