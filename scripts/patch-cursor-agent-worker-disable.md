@@ -8,6 +8,12 @@ Use this only when Cursor repeatedly shows a `Restart Extension` / `Reload Windo
 
 This is an unofficial local patch. It changes Cursor user state, not installed application files.
 
+### Status (likely unnecessary on Cursor 3.8.11+)
+
+Cursor staff confirmed this as a "known, purely cosmetic issue" (2026-05-29) and announced a fix in Cursor 3.8 (2026-06-17). v3.8.11 (2026-06-18) is a *partial* fix: the devcontainer prompt is gone, but some users still report the local `INSTALLED` prompt persisting. See the [Cursor forum thread](https://forum.cursor.com/t/cursor-v3-6-21-caught-in-loop-for-cursor-agent-worker-reload-window/161933).
+
+As of 2026-06-20, removing the patch under v3.8.11 on the machines tested did **not** bring the reload loop back, so on 3.8.11+ this patch is normally unnecessary. The script/recipe is kept anyway because the upstream fix is incomplete — re-apply with `--apply` if the loop returns and the UI still offers no Disable action.
+
 ## What It Changes
 
 The script edits Cursor's global storage database:
