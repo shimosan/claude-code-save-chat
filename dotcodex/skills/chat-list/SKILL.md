@@ -78,8 +78,12 @@ the rows (or the most relevant / top-N, saying so) rather than summarizing them 
   body full-text (reads bodies, slower). Both work in both modes.
 - `--tool claude|codex|cursor|copilot`, `--include-subagents`: both modes.
 - `--dump <id>`: a conversation's full text to stdout (`> file` to save) or `--open [cursor|code]`
-  for an editor buffer; `--json` for a structured message array. Each message is annotated with its
-  timestamp (a `ts` field under `--json`) so conversation time gaps are visible.
+  for an editor buffer; `--json` for a structured message array. Opens with an info block
+  (`# key : value` framed by `# ────` rules: id/origin/model/messages/events/span/size/cwd/path/
+  title); each message is preceded by a rule and a header `### <role> [i/N] <time>` (role first, so
+  it greps cleanly). A `ts` field appears per message under `--json`. Grep message positions with
+  `grep -nE '^### \w+ +\[[0-9]+/[0-9]+\] '` (or `^### user ` to filter a role); for machine use
+  prefer `--json` (boundaries are array elements = 100% reliable).
 - `--long` (`-l`): add a model column (cursor/copilot from records; claude from jsonl, codex from
   rollout head). Omitted by default.
 - archived/hidden rows are **always shown** (never excluded) with a `*` mark after origin; under

@@ -44,7 +44,8 @@ library の決定的コア `scripts/chat-list.py` に委譲する thin なエン
 - `--all`: WS で絞らず全件。**`--path` とは排他**。
 - `--exact`: `--path` / `--title` を完全一致に (既定は部分一致)。
 - `--workspaces`: WS 一覧 (各 WS のチャット数・start/end の census)。
-- `--dump <id>`: 指定会話の全文。各メッセージに時刻を併記 (会話の時間ギャップが見える)。既定 stdout(`> file` でファイル)、`--open` でエディタ buffer、`--json` で構造化メッセージ (各要素に `ts`)。
+- `--dump <id>`: 指定会話の全文。冒頭に情報ブロック (`# key : value` を `# ────` 罫線で囲む。id/origin/model/messages/events/span/size/cwd/path/title)、各メッセージは前に罫線 + 見出し `### <role> [i/N] <時刻>` (role 先頭で grep しやすい)。既定 stdout(`> file` でファイル)、`--open` でエディタ buffer、`--json` で構造化メッセージ (各要素に `ts`)。
+  - メッセージ位置の grep: `grep -nE '^### \w+ +\[[0-9]+/[0-9]+\] '` (全件) / `grep -n '^### user '` (role 絞り)。機械処理は `--json` (境界=配列要素で 100% 確実) が本筋。
 - フィルタ (両モード): `--tool claude|codex|cursor|copilot` / `--title <語>`(タイトル絞り) / `--grep <語>`(**本文全文検索**・遅め)。
 - `--path` / `--title` / `--grep` / `--tool` は一覧でも `--workspaces` でも効く(`--workspaces --path GPU` で census を絞る)。
 - `--sort` / `--reverse`(`-r`): 並び替え。**既定 `start`=開始時刻・新しい順**。列 header 名と一致するキー: 共通 `start` / `end`(最終活動。会話内の最後の timestamp で OS の file mtime ではない) / `size`、一覧専用 `title`、`--workspaces` 専用 `total`(本数) / `path`。start/end/size/total は新しい/大きい順、title/path は昇順。`--reverse` で反転。モード外キーはエラー。

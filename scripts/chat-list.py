@@ -913,6 +913,7 @@ def iter_cursor_sessions(pred=None, include_subagents=False):
             "archived": cid in archived_ids,  # composer.composerHeaders.isArchived
             "_archmark": "*" if cid in archived_ids else "",  # editor 区別なし → 素の *
             "_msgs": msgs,  # virtual path ゆえ本文をレコードに同梱
+            "_nevents": len(headers),  # 全 bubble 数 (tool/thinking 込み = イベント数)
         }
 
 
@@ -1263,12 +1264,12 @@ def cmd_workspaces(args, pred=None):
         return (rpad(c0, 3) + "  " + rpad(c1, 3) + "  " + rpad(c2, 3) + "  " + rpad(c3, 3) + "  "
                 + rpad(c4, 3) + "  " + rpad(c5, 5) + "  " + rpad(c6, 4) + "  ")
 
-    print(cols("#", "CC", "CX", "CU", "CP", "total", "arch") + rpad("size", 6) + "  "
+    print(cols("#", "CC", "CX", "CU", "CP", "total", "arch") + rpad("size", 4) + "  "
           + pad("start", 12) + pad("end", 12) + "path")
     for i, (k, a) in enumerate(items, 1):
         arch = f"-{a['arch']}" if a["arch"] else ""
         print(cols(str(i), str(a["cc"]), str(a["cx"]), str(a["cu"]), str(a["cp"]), str(_total(a)), arch)
-              + rpad(human_size(a["bytes"]), 6) + "  "
+              + rpad(human_size(a["bytes"]), 4) + "  "
               + pad(loc_str(a["first"])[:10], 12) + pad(loc_str(a["last"])[:10], 12)
               + a["disp"].replace(_HOME_DISP, "~"))
 
@@ -1286,6 +1287,90 @@ def find_by_id(cid, include_subagents=True, include_archived=True):
             if r["id"] == cid or r["id"].startswith(cid):
                 hits.append(r)
     return hits
+
+
+_HARNESS_NAME = {"claude": "Claude Code", "codex": "Codex", "cursor": "Cursor", "copilot": "Copilot"}
+_DUMP_RULE = "# " + "─" * 64   # 情報ブロック枠 + 各メッセージ前の区切り (U+2500。本文と被りにくい)
+
+
+def _dur_str(a, b):
+    """2 時刻の差を 1d2h3m 風に (会話の所要時間)。負/欠損は空。"""
+    if not a or not b:
+        return ""
+    secs = int((b - a).total_seconds())
+    if secs < 0:
+        return ""
+    d, rem = divmod(secs, 86400)
+    h, rem = divmod(rem, 3600)
+    m = rem // 60
+    parts = []
+    if d:
+        parts.append(f"{d}d")
+    if h:
+        parts.append(f"{h}h")
+    if m or not parts:
+        parts.append(f"{m}m")
+    return "".join(parts)
+
+
+def _event_count(rec):
+    """ソースの生イベント数 (tool 呼び出し・reasoning 等も含むので messages より多い)。取得不可は None。"""
+    h = rec["harness"]
+    if h == "cursor":
+        return rec.get("_nevents")  # 列挙時に同梱した bubble 総数 (virtual path)
+    p = rec.get("path")
+    if not p or not os.path.exists(p):
+        return None
+    if h == "copilot" and rec.get("_kind") != "cli":   # VS Code chat (.json/.jsonl)
+        d = _copilot_load(p)
+        return sum(1 + len(req.get("response") or []) for req in (d.get("requests") or [])) if d else None
+    try:  # jsonl 系 (claude / codex / copilot CLI): 非空行 = 1 イベント
+        with open(p, encoding="utf-8", errors="replace") as f:
+            return sum(1 for line in f if line.strip())
+    except OSError:
+        return None
+
+
+def _dump_info(rec, msgs):
+    """dump 冒頭の情報ブロックの内容 (key : value 行のみ。罫線は呼び出し側で前置)。"""
+    n_user = sum(1 for r, _, _ in msgs if r == "user")
+    n_asst = sum(1 for r, _, _ in msgs if r == "assistant")
+    mts = [ts for _, ts, _ in msgs if ts]
+    first = min(mts) if mts else rec["start"]
+    last = max(mts) if mts else (rec["updated"] or rec["start"])
+    span = ""
+    if first and last:
+        lo, hi = loc_str(first), loc_str(last)
+        if hi[:10] == lo[:10]:      # 同日なら右側は時刻のみ
+            hi = hi[11:]
+        span = f"{lo} → {hi}"
+        d = _dur_str(first, last)
+        if d:
+            span += f"  ({d})"
+    arch = "  [archived]" if rec.get("archived") else ""
+    model = rec.get("model")  # codex/CLI は --long でしか入らないので dump 時に遅延取得
+    if not model and rec.get("path"):
+        if rec["harness"] == "codex":
+            model = _codex_model(rec["path"])
+        elif rec["harness"] == "copilot" and rec.get("_kind") == "cli":
+            model = _copilot_cli_model(rec["path"])
+    ev = _event_count(rec)
+    # title は最後に置く (改行を畳んで 1 行化 — 長い/多行タイトルが上の情報を押し流さないように)
+    title = " ".join((rec["title"] or "").split()) or "(untitled)"
+    rows = [
+        ("id", rec["id"]),
+        ("origin", f"{origin_label(rec)}  ({_HARNESS_NAME.get(rec['harness'], rec['harness'])}){arch}"),
+        ("model", model or "-"),
+        ("messages", f"{len(msgs)}  ({n_user} user / {n_asst} assistant)"),
+        ("events", str(ev) if ev is not None else "-"),
+        ("span", span or "-"),
+        ("size", human_size(rec["bytes"])),
+        ("cwd", (ws_path(rec["cwd"]) or "(unknown)").replace(_HOME_DISP, "~")),
+        ("path", (rec["path"] or "").replace(_HOME_DISP, "~")),
+        ("title", title),
+    ]
+    kw = max(len(k) for k, _ in rows)
+    return "\n".join(f"# {k.ljust(kw)} : {v}" for k, v in rows)  # 内容のみ (罫線は cmd_dump が前置)
 
 
 def cmd_dump(args):
@@ -1306,11 +1391,14 @@ def cmd_dump(args):
                           "messages": [{"role": rl, "ts": ts, "text": t} for rl, ts, t in msgs]},
                          ensure_ascii=False, indent=1, default=_json_default))
         return
-    model = f" model={rec['model']}" if rec.get("model") else ""
-    header = (f"# {rec['title']}\n# id={rec['id']} {origin_label(rec)}{model} 開始={loc_str(rec['start'])}\n"
-              f"# cwd={ws_path(rec['cwd'])}\n# path={rec['path']}\n\n")
-    sys.stdout.write(header + "\n\n".join(
-        f"### {role}{('  ' + loc_str(ts)) if ts else ''}\n{t}" for role, ts, t in msgs) + "\n")
+    # 全体を「罫線 + 直後に内容」のブロック列で統一 (情報ブロックも本文と同じ流れ)。ブロック間は空行 1 つ。
+    # メッセージ見出しは '### <role> [i/N] <ts>' (role 先頭 = grep アンカー、ASCII)。
+    n = len(msgs)
+    rolew = max((len(role) for role, _, _ in msgs), default=0)
+    blocks = [_dump_info(rec, msgs)] + [
+        f"### {role.ljust(rolew)} [{i}/{n}] {loc_str(ts) if ts else '(no-ts)'}\n{t}"
+        for i, (role, ts, t) in enumerate(msgs, 1)]
+    sys.stdout.write("\n\n".join(f"{_DUMP_RULE}\n{b}" for b in blocks) + "\n")
 
 
 # ---------- CLI ----------
