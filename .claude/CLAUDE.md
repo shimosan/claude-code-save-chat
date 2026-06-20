@@ -33,6 +33,8 @@
   作業前バックアップ、退避コピー、実験版、旧実体の保全は原則 `scratch/` に置く。
 - `local/` に backup を置くのは、継続的に参照する端末固有資料として明確な理由がある場合に限る。
   迷う場合は `scratch/` を使う。
+- `notes/`(開発メモ・gitignored)の 3 層運用ルール(日付付き note / `ideas.md` / `todo.md`)と
+  テーマ別索引は `notes/README.md` を参照する。notes を作成・更新する時はそれに従う。
 
 ## 管理ブロックのマーカー検出規約
 - `~/.claude/CLAUDE.md`(配布原本は `dotclaude/CLAUDE.md`)の管理ブロックは、行頭が `<!--` で
