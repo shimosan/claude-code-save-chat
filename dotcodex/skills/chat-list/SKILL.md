@@ -50,7 +50,7 @@ python3 <library_path>/scripts/chat-list.py [options]
 
 (On Windows use `python` / `py` instead of `python3`, or the `chat-list` command if it is on PATH.)
 
-Show the output rows (`#`, time, origin, id, size, title, plus any `--grep` / `--head` / `--tail`
+Show the output rows (`#`, start, end, origin, id, size, title, plus any `--grep` / `--head` / `--tail`
 matching or preview lines) with their numbers and ids intact — those are the handles the user
 needs to follow up (`--dump <id>`, picking a workspace, etc.). A one- or two-line orienting note
 above the list is fine, but do not replace the rows with a digest. For long results, still show
@@ -62,7 +62,7 @@ the rows (or the most relevant / top-N, saying so) rather than summarizing them 
 - `--path <value>`: target a workspace by path. **Substring by default** (NFC-normalized; bundles
   rename/normalization-split dirs); `--exact` for full equality. Repeatable / comma-separated.
   Works in the default list and with `--workspaces`. **Mutually exclusive with `--all`**.
-- `--all`: every workspace (no path restriction). Cannot be combined with `--path`.
+- `--all` (`-a`): every workspace (no path restriction). Cannot be combined with `--path`.
 - `--exact`: make `--path` / `--title` match exactly (default is substring).
 - `--workspaces`: numbered per-workspace census (per-tool counts CC/CX/CU/CP, a `total`, an `arch`
   column `-N` = archived/hidden of total, size, and separate `start`/`end` date columns).

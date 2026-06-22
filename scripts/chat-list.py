@@ -1223,9 +1223,12 @@ def cmd_list(args, pred):
     print()
     # 由来列の表示文字列 (WSラベル + 由来 + archive 記号) を先に作り、列幅は実データの最大に合わせる。
     # short: 素の '*' / long: '*c/*v/*cv' (claude) ・ '*' (codex)。記号は除外ではなく印のみ。
+    # WS-letter は max letter 幅に pad → 後続の harness ラベル開始位置が縦に揃う
+    # (WS が 27 件超で A→AC と 1〜2 文字幅が混在しても CC/vscode が整列)。
     odisp = []
+    lw = max([vwidth(letters[_ws_key(r)]) for r in recs], default=0)
     for r in recs:
-        o = f"{letters[_ws_key(r)]} {origin_label(r)}"
+        o = f"{pad(letters[_ws_key(r)], lw)} {origin_label(r)}"
         o += (r.get("_archmark", "") if args.long else ("*" if r["archived"] else ""))
         odisp.append(o)
     ow = max([vwidth("origin")] + [vwidth(o) for o in odisp])
@@ -1242,13 +1245,14 @@ def cmd_list(args, pred):
             models.append(m or "-")
         mw = min(34, max([vwidth("model")] + [vwidth(m) for m in models]))
     mhead = pad("model", mw + 1) if args.long else ""
-    print(pad("#", 4) + pad("start", 17) + pad("origin", ow + 1) + mhead
-          + pad("id", 10) + rpad("size", 6) + "  " + "title")
+    print(pad("#", 4) + pad("start", 17) + pad("end", 17) + pad("origin", ow + 1) + mhead
+          + pad("id", 10) + rpad("size", 5) + "  " + "title")
     for i, r in enumerate(recs, 1):
         mcol = pad(clip(models[i - 1], mw), mw + 1) if args.long else ""
-        print(pad(str(i), 4) + pad(loc_str(r["start"]), 17) + pad(odisp[i - 1], ow + 1)
+        print(pad(str(i), 4) + pad(loc_str(r["start"]), 17) + pad(loc_str(r["updated"]), 17)
+              + pad(odisp[i - 1], ow + 1)
               + mcol + pad(r["id"][:8], 10)
-              + rpad(human_size(r["bytes"]), 6) + "  " + r["title"][:50])
+              + rpad(human_size(r["bytes"]), 5) + "  " + r["title"][:50])
         if r.get("_match"):  # --grep の一致行を優先表示
             for ln in r["_match"]:
                 print(f"      ┊ {ln[:96]}")
@@ -1465,6 +1469,7 @@ def main(argv=None):
         description="claude/codex/cursor/copilot 会話履歴の横断リスト (読み取り専用)",
         epilog=(
             "記号・列:\n"
+            "  start / end         = 一覧の時刻列。start=開始 / end=最終活動 (会話内最後の timestamp、OS mtime ではない)\n"
             "  origin = '<WS> CC|CX|CU|CP/<surface>'  (CC=Claude Code, CX=Codex, CU=Cursor, CP=Copilot)\n"
             "  origin 末尾 '*'     = archived/hidden (除外せず印)。--long で claude=*c(Cursor)/*v(VS Code)/*cv、他=*。\n"
             "                        --workspaces は arch 列に -N。\n"
@@ -1481,7 +1486,7 @@ def main(argv=None):
     g.add_argument("--path", action="append", metavar="VALUE",
                    help="WS を path で限定 (両モード)。既定は部分一致、--exact で完全一致。反復・カンマ区切りで複数可。"
                         "未指定: 一覧=現在 cwd / --workspaces=全 WS")
-    g.add_argument("--all", action="store_true", help="全 WS (path 絞り無し)。--path と排他")
+    g.add_argument("--all", "-a", action="store_true", help="全 WS (path 絞り無し)。--path と排他")
     p.add_argument("--exact", action="store_true", help="--path / --title を完全一致に (既定は部分一致)")
     p.add_argument("--workspaces", action="store_true", help="WS 一覧 (各 WS のチャット数概要)")
     p.add_argument("--dump", metavar="ID", help="指定 id の会話全文を出力")

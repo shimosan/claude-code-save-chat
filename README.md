@@ -186,7 +186,7 @@ N番の会話を全部見せて                        ← 番号から id を�
 | **Claude Code 皮** | [`dotclaude/commands/chat-list.md`](dotclaude/commands/chat-list.md) | slash command。`~/.claude/commands/` へ load で配布 |
 | **Codex 皮** | [`dotcodex/skills/chat-list/SKILL.md`](dotcodex/skills/chat-list/SKILL.md) | skill (自然文トリガー)。`~/.codex/skills/` へ配布 |
 
-各行は `#` / 開始時刻 / 由来 (`CC`/`CX`/`CU`/`CP` + surface、末尾 `*`=archived/hidden) / id / サイズ / タイトル(`--long` で model 列)。`--sort`(header 名キー: 共通 `start`/`end`/`size`、一覧 `title`、`--workspaces` `total`/`path`。既定 start・新しい順) と `--reverse` で並べ替え、`--path`/`--title`/`--grep`(両モード)で絞り込み(既定 部分一致・`--exact` で完全一致)、`--dump` で全文 (stdout / `--open` でエディタ buffer / `--json` で構造化) を取り出せる。dump 冒頭に情報ブロック、各メッセージは罫線 + 見出し `### <role> [i/N] <時刻>` (ASCII で grep しやすい)。オプションの正本は `--help`。
+各行は `#` / 開始時刻 / 終了時刻 (最終活動) / 由来 (`CC`/`CX`/`CU`/`CP` + surface、末尾 `*`=archived/hidden) / id / サイズ / タイトル(`--long` で model 列)。`--sort`(header 名キー: 共通 `start`/`end`/`size`、一覧 `title`、`--workspaces` `total`/`path`。既定 start・新しい順) と `--reverse` で並べ替え、`--path`/`--title`/`--grep`(両モード)で絞り込み(既定 部分一致・`--exact` で完全一致)、`--dump` で全文 (stdout / `--open` でエディタ buffer / `--json` で構造化) を取り出せる。dump 冒頭に情報ブロック、各メッセージは罫線 + 見出し `### <role> [i/N] <時刻>` (ASCII で grep しやすい)。オプションの正本は `--help`。
 
 core は決定的 (LLM 推論ゼロ) なので生 CLI で完結する。データ源: claude=`~/.claude/projects/*.jsonl` / codex=`~/.codex/sqlite/state_5.sqlite` / cursor=`Cursor/…/state.vscdb` / copilot=`Code/…/workspaceStorage/<hash>/chatSessions/*` + CLI `~/.copilot/`(WAL は app 起動/終了どちらでも読めるよう mode=ro→immutable フォールバック)。開始時刻は会話本体の timestamp が正本 (OS の file mtime は Dropbox 同期で揃うため使わない)、同一セッションの物理重複は `(harness, id)` で排除。subagent は既定で除外、archived/hidden は除外せず `*` 印。
 

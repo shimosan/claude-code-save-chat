@@ -1,7 +1,7 @@
 ---
 description: claude-code / codex / cursor / copilot の会話履歴を横断で列挙・閲覧する (読み取り専用)。既定は現在の WS の統合履歴を時系列で。WS 一覧・各会話の先頭/末尾プレビュー・特定会話の全文 dump も可能。
 allowed-tools: ["Bash", "Read"]
-argument-hint: "[--path <名前>] [--all] [--exact] [--workspaces] [--dump <id>] [--title <語>] [--grep <語>] [--preview [N]] [--head N|--tail N] [--tool claude|codex|cursor|copilot] [--long] [--sort start|end|size|total|title|path] [--reverse] [--json] [--open]"
+argument-hint: "[--path <名前>] [--all|-a] [--exact] [--workspaces] [--dump <id>] [--title <語>] [--grep <語>] [--preview [N]] [--head N|--tail N] [--tool claude|codex|cursor|copilot] [--long|-l] [--sort start|end|size|total|title|path] [--reverse|-r] [--json] [--open]"
 ---
 
 # /chat-list — 会話履歴の横断リスト (Claude Code 皮)
@@ -41,7 +41,7 @@ library の決定的コア `scripts/chat-list.py` に委譲する thin なエン
 - 既定 (引数なし): **現在の cwd の WS の統合履歴**を時系列で。
 - `--path <値>`: 別 WS を対象に。**既定は cwd 部分一致**、`--exact` で完全一致。反復・カンマ区切りで複数可。
   曖昧で複数 WS にまたがる時は、まず `--workspaces` を出して候補を確定してから渡す。
-- `--all`: WS で絞らず全件。**`--path` とは排他**。
+- `--all` (`-a`): WS で絞らず全件。**`--path` とは排他**。
 - `--exact`: `--path` / `--title` を完全一致に (既定は部分一致)。
 - `--workspaces`: WS 一覧 (各 WS のチャット数・start/end の census)。
 - `--dump <id>`: 指定会話の全文。冒頭に情報ブロック (`# key : value` を `# ────` 罫線で囲む。id/origin/model/messages/events/span/size/cwd/path/title)、各メッセージは前に罫線 + 見出し `### <role> [i/N] <時刻>` (role 先頭で grep しやすい)。既定 stdout(`> file` でファイル)、`--open` でエディタ buffer、`--json` で構造化メッセージ (各要素に `ts`)。
@@ -51,6 +51,7 @@ library の決定的コア `scripts/chat-list.py` に委譲する thin なエン
 - `--sort` / `--reverse`(`-r`): 並び替え。**既定 `start`=開始時刻・新しい順**。列 header 名と一致するキー: 共通 `start` / `end`(最終活動。会話内の最後の timestamp で OS の file mtime ではない) / `size`、一覧専用 `title`、`--workspaces` 専用 `total`(本数) / `path`。start/end/size/total は新しい/大きい順、title/path は昇順。`--reverse` で反転。モード外キーはエラー。
 - `--head N` / `--tail N`: **出力の先頭/末尾 N 件**に絞る (両モード・Unix 流)。
 - `--preview [N]`: 一覧で各会話の本文プレビュー。`N`=先頭 N 行 / `--preview=-N`=末尾 N 行 / 単体=既定 10 行。各行頭に `[role HH:MM]`。
+- 一覧の各会話に **start / end の 2 時刻列**(開始 / 最終活動。Claude Code 拡張の会話選択窓は end+title 表示なので突き合わせやすい)。
 - 各会話に**サイズ列**(会話本体ファイルのバイト数を `696K`/`2.4M` 風に。`--json` は正確な `bytes` 整数)。
 - `--open [cursor|code]`: 出力をエディタの untitled バッファで開く (全モード。下記)。
 - `--long` (`-l`): 一覧に**モデル列**を追加 (cursor/copilot は記録値、claude は jsonl・codex は rollout head から取得)。既定は省略。
