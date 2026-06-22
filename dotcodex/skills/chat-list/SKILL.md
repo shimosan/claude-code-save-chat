@@ -109,7 +109,7 @@ the rows (or the most relevant / top-N, saying so) rather than summarizing them 
 ## Sandbox And Permissions
 
 The script reads, read-only, from outside the workspace: `~/.claude/projects/*.jsonl` (claude),
-`~/.codex/sqlite/state_5.sqlite` (codex), Cursor/VS Code `…/globalStorage/state.vscdb` and
+`~/.codex/state_5.sqlite` (codex; older builds use `~/.codex/sqlite/`, newest by mtime wins), Cursor/VS Code `…/globalStorage/state.vscdb` and
 `…/workspaceStorage/<hash>/` (cursor native + copilot), and `~/.copilot/` (copilot CLI). WAL
 sqlite DBs are opened `mode=ro` with an `immutable=1` fallback so they read whether or not the
 owning app is running. In a restricted sandbox the read (or running `python3`) may need approval.

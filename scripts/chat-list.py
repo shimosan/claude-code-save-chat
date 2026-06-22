@@ -9,7 +9,7 @@ LLM 推論ゼロ・読み取り専用。slash 皮 (dotclaude/commands/chat-list.
 - claude: ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl
     開始 = 最初の timestamp / id = ファイル名 stem / 由来 = entrypoint /
     名前 = 最後の customTitle → 無ければ aiTitle / cwd = 各行の cwd フィールド
-- codex : ~/.codex/sqlite/state_5.sqlite の threads テーブル (cwd/title/created_at/rollout_path)
+- codex : ~/.codex/state_5.sqlite (旧版は ~/.codex/sqlite/) の threads テーブル (cwd/title/created_at/rollout_path)
     本体 = rollout_path の jsonl。subagent (source に subagent) / archived は既定で除外。
 - cursor: <Cursor>/User/globalStorage/state.vscdb の cursorDiskKV (composerData:<id> ヘッダ +
     bubbleId:<id>:<bid> 本文)。live なので /tmp コピーしてから開く。cwd=workspaceIdentifier.uri.fsPath。
@@ -42,7 +42,64 @@ import urllib.parse
 
 HOME = os.path.expanduser("~")
 CLAUDE_PROJECTS = os.path.join(HOME, ".claude", "projects")
-CODEX_DB = os.path.join(HOME, ".codex", "sqlite", "state_5.sqlite")
+# codex の state DB は版によって置き場所が変わる。新しい Codex (desktop app 含む) は
+# ~/.codex/state_5.sqlite (トップ直下)、旧版は ~/.codex/sqlite/state_5.sqlite に書く。
+# 移行期は両方が残り、片方は古いコピーになる。実在する候補のうち mtime が最新の
+# ものを採って自動追従する (どちらも無ければ先頭候補を返し、open 時に None になる)。
+CODEX_DB_CANDIDATES = (
+    os.path.join(HOME, ".codex", "state_5.sqlite"),
+    os.path.join(HOME, ".codex", "sqlite", "state_5.sqlite"),
+)
+
+
+_codex_db_coverage_checked = False
+
+
+def _codex_thread_ids(path):
+    con = _ro_connect(path)
+    if con is None:
+        return set()
+    try:
+        return {r[0] for r in con.execute("SELECT id FROM threads")}
+    except sqlite3.Error:
+        return set()
+    finally:
+        con.close()
+
+
+def _warn_codex_db_coverage(chosen, existing):
+    """mtime 最新方式の前提検査 (移行期=候補 2 つ以上のときだけ走る)。
+    この方式は『最新 mtime の DB が他候補の上位集合』を暗黙の前提にしている。今回の実測
+    (新 ~/.codex/state_5.sqlite が旧 ~/.codex/sqlite/ の上位集合) ではその前提が成り立つが、
+    将来 2 つの DB が排他的な別履歴を持つ形に変わると、片方の会話を黙って取りこぼす。
+    採用 DB に無い thread が他候補にあれば stderr に警告して気付けるようにする。
+    プロセス内 1 回だけ・候補 1 つなら no-op (=移行が終われば常にゼロコスト)。"""
+    global _codex_db_coverage_checked
+    if _codex_db_coverage_checked or len(existing) < 2:
+        return
+    _codex_db_coverage_checked = True
+    chosen_ids = _codex_thread_ids(chosen)
+    for other in existing:
+        if other == chosen:
+            continue
+        missing = _codex_thread_ids(other) - chosen_ids
+        if missing:
+            sample = ", ".join(sorted(missing)[:3])
+            sys.stderr.write(
+                f"chat-list: WARNING codex DB picked by mtime ({chosen}) is missing "
+                f"{len(missing)} thread(s) that exist in {other} (e.g. {sample}). "
+                f"The 'newest DB is a superset' assumption no longer holds — "
+                f"switch _resolve_codex_db to union the candidate DBs by thread id.\n"
+            )
+
+
+def _resolve_codex_db():
+    existing = [p for p in CODEX_DB_CANDIDATES if os.path.exists(p)]
+    if not existing:
+        return CODEX_DB_CANDIDATES[0]
+    chosen = max(existing, key=lambda p: os.path.getmtime(p))
+    _warn_codex_db_coverage(chosen, existing)
+    return chosen
 
 
 def _editor_user_dir(app):
@@ -413,7 +470,7 @@ def _ro_connect(db_path, timeout=5):
 
 # ---------- codex ----------
 def _codex_conn():
-    return _ro_connect(CODEX_DB)
+    return _ro_connect(_resolve_codex_db())
 
 
 def iter_codex_sessions(pred=None, include_subagents=False, include_archived=False):
