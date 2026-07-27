@@ -55,6 +55,7 @@ This library publishes personal configuration and operations helpers as-is, with
 ├── scratch/                     ← ローカル退避用 (.gitignore 対象、配布対象外)
 ├── local/                       ← 利用者ローカル領域 (.gitignore 対象)
 ├── notes/                       ← 開発メモ (.gitignore 対象)
+├── experiments/                 ← 本格実験・リサーチ (.gitignore 対象)
 └── log/                         ← config snapshot / apply log (.gitignore 対象)
 ```
 
@@ -332,13 +333,14 @@ Claude Code の `~/.claude/` への `load`(配布)手順の詳細は
 
 `scripts/` の内容は任意利用。新端末セットアップに必須ではなく、必要な端末で必要なものだけ実行する。
 
-## ローカル領域 — `local/` · `notes/` · `scratch/` · `log/`
+## ローカル領域 — `local/` · `notes/` · `scratch/` · `experiments/` · `log/`
 
 `.gitignore` 対象のフォルダで、**git 管理外＝バージョン管理されない利用者ローカル領域**。commit も push もされず、`git pull` でライブラリを更新しても**上書きされない**。各自のローカルな内容を安心して置ける (remote が public でも露出しない)。
 
 - `local/` : 端末固有・個人的な設定や事実 (例: マシン台帳、private policy、private recipes)。git に入れたくないがすぐ参照したいもの。
 - `notes/` : 長期保存の開発メモ・気付き (日付付き md, `YYYY-MM-DD_topic.md` 推奨)。
-- `scratch/` : 作業前バックアップ、退避コピー、実験版、旧実体の保全などの一時・準長期退避先。
+- `scratch/` : 作業前バックアップ、退避コピー、実験版、旧実体の保全などの一時・準長期退避先 (使い捨て)。
+- `experiments/` : 腰を据えた実験・リサーチ。データセット・実験スクリプト・結果を残して反復する (1 テーマ = 1 サブフォルダ)。`scratch/` の使い捨てとは対照的に、残して育てる領域。計画と結論は `notes/`、実体と生結果は `experiments/`。
 - `log/` : config snapshot / apply log などの raw 履歴。
 
 `local/` は config-manager の固定 target state 置き場ではない。過去に置いていた editor 設定テンプレートは `scratch/` へ退避済みで、必要時に明示承認された source artifact としてだけ参照する。

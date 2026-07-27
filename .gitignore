@@ -8,6 +8,10 @@ __pycache__/
 # Local scratch (pre-public versions, personal backups)
 scratch/
 
+# Local research/experiment area (full-scale experiments: datasets, scripts, results).
+# Distinct from scratch/ (throwaway trial-and-error); experiments here are kept and iterated. Not distributed.
+experiments/
+
 # Claude Code local settings (per-machine: permission allowlist, paths/usernames)
 # Ignore .claude/ contents but keep the tracked library-maintenance CLAUDE.md
 .claude/*

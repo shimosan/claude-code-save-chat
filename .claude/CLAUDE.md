@@ -35,6 +35,9 @@
   迷う場合は `scratch/` を使う。
 - `notes/`(開発メモ・gitignored)の 3 層運用ルール(日付付き note / `ideas.md` / `todo.md`)と
   テーマ別索引は `notes/README.md` を参照する。notes を作成・更新する時はそれに従う。
+- `experiments/`(gitignored)は腰を据えた実験・リサーチの領域。データセット・実験スクリプト・結果を
+  残して反復するものを 1 テーマ 1 サブフォルダで置く。使い捨ての試行錯誤は `scratch/`、計画と結論の
+  文章記録は `notes/`。運用は `experiments/README.md` を参照する。
 
 ## 管理ブロックのマーカー検出規約
 - `~/.claude/CLAUDE.md`(配布原本は `dotclaude/CLAUDE.md`)の管理ブロックは、行頭が `<!--` で
