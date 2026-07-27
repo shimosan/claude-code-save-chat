@@ -77,6 +77,19 @@ This file is separate from [`config-apply-recipes.md`](config-apply-recipes.md).
 - Remove: `python3 scripts/patch-cursor-agent-worker-disable.py --remove`
 - Test: `python3 scripts/patch-cursor-agent-worker-disable.py --self-test`
 
+### `mpe.zoom-sensitivity-patch`
+
+- Recipe type: `patch`
+- Script: [`patch-mpe-zoom-sensitivity.py`](patch-mpe-zoom-sensitivity.py)
+- Docs: [`patch-mpe-zoom-sensitivity.md`](patch-mpe-zoom-sensitivity.md)
+- Applies to: per-user VS Code-family installs containing `shd101wyy.markdown-preview-enhanced`; scans common per-user extension roots (VS Code, Insiders, VSCodium, Cursor), or an explicit `--extensions-dir`. macOS-specific symptom (trackpad pinch).
+- Log target: MPE `crossnote/webview/preview.js` files changed or restored, plus the `.orig` backup path.
+- Purpose: throttle MPE's wheel-zoom handler and shrink its per-step increment so a light trackpad pinch stops slamming the preview zoom to its min/max.
+- Status: `python3 scripts/patch-mpe-zoom-sensitivity.py --status`
+- Preview: `python3 scripts/patch-mpe-zoom-sensitivity.py --dry-run`
+- Apply: `python3 scripts/patch-mpe-zoom-sensitivity.py` (tune with `--step` / `--throttle-ms`)
+- Restore: `python3 scripts/patch-mpe-zoom-sensitivity.py --restore`
+
 ### `codex.git-fsmonitor-env-patch`
 
 - Recipe type: `patch`
