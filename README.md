@@ -51,7 +51,8 @@ This library publishes personal configuration and operations helpers as-is, with
 │   ├── config-snapshot-*.py     ← live config snapshot 収集
 │   ├── config-log-helper.py     ← snapshot/apply log の閲覧・比較 helper
 │   ├── config-jsonc-set-keys.py ← JSONC top-level key 設定 helper
-│   └── patch-* / fix-*          ← optional local patch / recovery scripts
+│   ├── patch-* / fix-*          ← optional local patch / recovery scripts
+│   └── power-mac.py             ← macOS 電源 (pmset/caffeinate) UI (clamshell no-sleep 等)
 ├── scratch/                     ← ローカル退避用 (.gitignore 対象、配布対象外)
 ├── local/                       ← 利用者ローカル領域 (.gitignore 対象)
 ├── notes/                       ← 開発メモ (.gitignore 対象)

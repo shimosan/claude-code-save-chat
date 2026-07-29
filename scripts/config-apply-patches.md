@@ -90,6 +90,20 @@ This file is separate from [`config-apply-recipes.md`](config-apply-recipes.md).
 - Apply: `python3 scripts/patch-mpe-zoom-sensitivity.py` (tune with `--step` / `--throttle-ms`)
 - Restore: `python3 scripts/patch-mpe-zoom-sensitivity.py --restore`
 
+### `power.clamshell-nosleep`
+
+- Recipe type: `patch`
+- Script: [`power-mac.py`](power-mac.py)
+- Docs: [`power-mac.md`](power-mac.md)
+- Applies to: macOS only. Allows the Mac to run with the lid closed and no external display on battery (suppresses "Clamshell Sleep" via `pmset -b disablesleep`). The broader `power-mac.py` front-end also exposes read-only status/report/settings, a whitelisted `pmset set`, presets, and a `caffeinate` keep-awake wrapper.
+- Privilege note: `pmset` writes need root. Unlike the other patch recipes here (which edit user-scope files), the apply step elevates. With `--apply` the tool fires `osascript -e 'do shell script "…" with administrator privileges'`, so **the user authenticates in the macOS dialog and the password never reaches the agent**. Values passed to the root shell are whitelist-validated first. Without `--apply` the command is only printed.
+- Runtime flag: `disablesleep` is not captured in config snapshots and is cleared by a reboot; verify with `power-mac.py status`. This is why it is a patch recipe, not a snapshot-driven config recipe.
+- Log target: the `pmset -b disablesleep` state (before/after) reported by `power-mac.py status`.
+- Status: `python3 scripts/power-mac.py status`
+- Preview: `python3 scripts/power-mac.py clamshell on` (prints the command; changes nothing)
+- Apply: `python3 scripts/power-mac.py clamshell on --apply`
+- Restore: `python3 scripts/power-mac.py clamshell off --apply`
+
 ### `codex.git-fsmonitor-env-patch`
 
 - Recipe type: `patch`
