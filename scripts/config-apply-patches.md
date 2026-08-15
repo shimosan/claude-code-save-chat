@@ -90,6 +90,20 @@ This file is separate from [`config-apply-recipes.md`](config-apply-recipes.md).
 - Apply: `python3 scripts/patch-mpe-zoom-sensitivity.py` (tune with `--step` / `--throttle-ms`)
 - Restore: `python3 scripts/patch-mpe-zoom-sensitivity.py --restore`
 
+### `codex.sidebar-icon-patch`
+
+- Recipe type: `patch`
+- Script: [`patch-codex-sidebar-icon.py`](patch-codex-sidebar-icon.py)
+- Docs: [`patch-codex-sidebar-icon.md`](patch-codex-sidebar-icon.md)
+- Applies to: per-user VS Code-family installs containing `openai.chatgpt`; scans common per-user extension roots (VS Code, Insiders, VSCodium, Cursor), or an explicit `--extensions-dir`. Cursor-specific symptom (extensions can no longer register Secondary Side Bar containers since 3.15.5/3.15.6, so the Codex panel is relocated by hand).
+- Log target: Codex `package.json` files changed or restored, plus the `.orig` backup path.
+- Purpose: copy each view container's declared icon down to its iconless views, so a Codex panel moved onto the Activity Bar shows the Codex blossom instead of `default-view-icon`.
+- Status: `python3 scripts/patch-codex-sidebar-icon.py --status`
+- Preview: `python3 scripts/patch-codex-sidebar-icon.py --dry-run`
+- Apply: `python3 scripts/patch-codex-sidebar-icon.py`
+- Restore: `python3 scripts/patch-codex-sidebar-icon.py --restore`
+- Test: `python3 scripts/patch-codex-sidebar-icon.py --self-test`
+
 ### `power.clamshell-nosleep`
 
 - Recipe type: `patch`
