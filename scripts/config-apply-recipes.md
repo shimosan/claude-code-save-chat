@@ -676,6 +676,8 @@ Use one file per approved command run:
 log/config/config_apply_<machine>_YYYY-MM-DD_HH-MM-SS.md
 ```
 
+`applied_at` is the apply start time, written as a single timestamp. When a run spans several minutes, keep the start time and do not use a range; the end of the run is represented by `logged_at`.
+
 Minimal body:
 
 ```markdown

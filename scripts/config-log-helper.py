@@ -423,10 +423,18 @@ def snapshot_ref_matches(entry: LogEntry, snapshot_path: Path) -> bool:
 
 
 def entry_event_time(entry: LogEntry) -> datetime:
-    if entry.kind == "snapshot" and entry.captured_at:
-        return parse_ts(entry.captured_at)
-    if entry.kind == "apply" and entry.applied_at:
-        return parse_ts(entry.applied_at)
+    # 書式違反の captured_at / applied_at でコマンド全体を落とさない。
+    # header が読めなければファイル名由来の timestamp を使う。
+    raw = None
+    if entry.kind == "snapshot":
+        raw = entry.captured_at
+    elif entry.kind == "apply":
+        raw = entry.applied_at
+    if raw:
+        try:
+            return parse_ts(raw)
+        except ValueError:
+            pass
     return entry.timestamp
 
 
