@@ -89,9 +89,50 @@ python3 scripts/patch-codex-sidebar-icon.py --dry-run
 The script is idempotent: views that already declare an icon are left alone, and
 re-running with nothing to do is a no-op.
 
-If the Activity Bar icon does not change after a reload, the generated container
-has cached its icon. Move the view back to the Explorer and out to
-`New Side Bar Entry` again to rebuild the container.
+If the Activity Bar icon does not change after a reload, check the patch before
+anything else:
+
+```bash
+python3 scripts/patch-codex-sidebar-icon.py --status
+```
+
+`views with icon: 0/2` together with `backup: none` means an extension update has
+installed a new version directory and the patch is simply gone. Re-apply it and
+restart the editor completely (`Cmd+Q`, then relaunch) instead of running
+`Developer: Reload Window`.
+
+A full restart is enough on its own; the generated container does **not** need to
+be rebuilt. The Activity Bar entries stored under the key
+`workbench.activity.placeholderViewlets` in `.../User/globalStorage/state.vscdb`
+look like an icon cache — each records either a `themeIcon` id or an `iconUrl`
+whose `path` is absolute and includes the extension's version directory — but
+they are only a **startup placeholder**, used to paint the Activity Bar before
+the extension host has activated. Once the extension activates and the view's own
+`icon` resolves, the editor overwrites the stored entry.
+
+Verified on macOS with Cursor, 2026-08-22: a Codex container recorded as
+`themeIcon: default-view-icon` picked up
+`openai.chatgpt-<version>/resources/blossom-white.svg` after the patch was
+re-applied and Cursor restarted, keeping the same
+`workbench.views.service.sidebar.<uuid>` id. Nothing was moved and nothing was
+recreated. There is no need to edit `state.vscdb` by hand.
+
+Read the stored entries without disturbing a running editor — the read-only URI
+is safe while Cursor is open:
+
+```bash
+sqlite3 "file:$HOME/Library/Application Support/Cursor/User/globalStorage/state.vscdb?mode=ro" "SELECT value FROM ItemTable WHERE key='workbench.activity.placeholderViewlets';"
+```
+
+A healthy Codex entry is an id of the form
+`workbench.views.service.sidebar.<uuid>` whose `iconUrl.path` ends in
+`openai.chatgpt-<installed version>/resources/blossom-white.svg`. Read it after a
+restart in which the Activity Bar was actually painted, since the entry describes
+the last state the editor recorded rather than the current manifest.
+
+Only if the icon still refuses to change after a patched, fully restarted editor
+is it worth rebuilding the container: move the view back to the Explorer
+(`View: Move View` -> Codex -> Explorer), then out again to `New Side Bar Entry`.
 
 ## Restore
 
